@@ -7,7 +7,7 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-magiclaw = "FFHSMhttPKbxpmNJ1DaA3ueuQE52sh3No9XeWB4B9p41"
+magiclaw = "9MPCK9ic71C2pdoTYMz91CSpYppiuVKMTTNWoTKgv3MW"
 
 [provider]
 cluster = "localnet"
