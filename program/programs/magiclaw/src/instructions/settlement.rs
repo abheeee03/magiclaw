@@ -249,74 +249,79 @@ pub fn handle_request_withdraw_and_undelegate(
         ErrorCode::InvalidState
     );
 
-    let session: &mut PlayerSession = &mut ctx.accounts.player_session;
     let withdraw = if amount_usdc == 0 {
-        session.usdc_balance
+        ctx.accounts.player_session.usdc_balance
     } else {
+        require!(
+            amount_usdc <= ctx.accounts.player_session.usdc_balance,
+            ErrorCode::InsufficientBalance
+        );
         amount_usdc
     };
-    require!(withdraw > 0, ErrorCode::NothingToSettle);
-    require!(
-        withdraw <= session.usdc_balance,
-        ErrorCode::InsufficientBalance
-    );
 
-    session.usdc_balance = session
-        .usdc_balance
-        .checked_sub(withdraw)
-        .ok_or(ErrorCode::MathOverflow)?;
-    session.cumulative_withdrawn_usdc = session
-        .cumulative_withdrawn_usdc
-        .checked_add(withdraw)
-        .ok_or(ErrorCode::MathOverflow)?;
+    if withdraw > 0 {
+        let session: &mut PlayerSession = &mut ctx.accounts.player_session;
+        session.usdc_balance = session
+            .usdc_balance
+            .checked_sub(withdraw)
+            .ok_or(ErrorCode::MathOverflow)?;
+        session.cumulative_withdrawn_usdc = session
+            .cumulative_withdrawn_usdc
+            .checked_add(withdraw)
+            .ok_or(ErrorCode::MathOverflow)?;
+    }
 
-    let action = CallHandler {
-        args: ActionArgs::new(
-            anchor_lang::InstructionData::data(&crate::instruction::ExecuteL1UsdcWithdraw {}),
-        ),
-        compute_units: 200_000,
-        escrow_authority: ctx.accounts.owner.to_account_info(),
-        destination_program: crate::ID,
-        accounts: vec![
-            ShortAccountMeta {
-                pubkey: ctx.accounts.machine_config.key(),
-                is_writable: false,
-            },
-            ShortAccountMeta {
-                pubkey: ctx.accounts.player_session.key(),
-                is_writable: false,
-            },
-            ShortAccountMeta {
-                pubkey: ctx.accounts.player_ledger.key(),
-                is_writable: true,
-            },
-            ShortAccountMeta {
-                pubkey: ctx.accounts.vault_authority.key(),
-                is_writable: false,
-            },
-            ShortAccountMeta {
-                pubkey: ctx.accounts.usdc_vault.key(),
-                is_writable: true,
-            },
-            ShortAccountMeta {
-                pubkey: ctx.accounts.owner_usdc_ata.key(),
-                is_writable: true,
-            },
-            ShortAccountMeta {
-                pubkey: ctx.accounts.token_program.key(),
-                is_writable: false,
-            },
-        ],
-    };
-
-    MagicIntentBundleBuilder::new(
+    let mut builder = MagicIntentBundleBuilder::new(
         ctx.accounts.owner.to_account_info(),
         ctx.accounts.magic_context.to_account_info(),
         ctx.accounts.magic_program.to_account_info(),
     )
-    .commit_and_undelegate(&[ctx.accounts.player_session.to_account_info()])
-    .add_post_undelegate_actions([action])
-    .build_and_invoke()?;
+    .commit_and_undelegate(&[ctx.accounts.player_session.to_account_info()]);
+
+    if withdraw > 0 {
+        let action = CallHandler {
+            args: ActionArgs::new(
+                anchor_lang::InstructionData::data(&crate::instruction::ExecuteL1UsdcWithdraw {}),
+            ),
+            compute_units: 200_000,
+            escrow_authority: ctx.accounts.owner.to_account_info(),
+            destination_program: crate::ID,
+            accounts: vec![
+                ShortAccountMeta {
+                    pubkey: ctx.accounts.machine_config.key(),
+                    is_writable: false,
+                },
+                ShortAccountMeta {
+                    pubkey: ctx.accounts.player_session.key(),
+                    is_writable: false,
+                },
+                ShortAccountMeta {
+                    pubkey: ctx.accounts.player_ledger.key(),
+                    is_writable: true,
+                },
+                ShortAccountMeta {
+                    pubkey: ctx.accounts.vault_authority.key(),
+                    is_writable: false,
+                },
+                ShortAccountMeta {
+                    pubkey: ctx.accounts.usdc_vault.key(),
+                    is_writable: true,
+                },
+                ShortAccountMeta {
+                    pubkey: ctx.accounts.owner_usdc_ata.key(),
+                    is_writable: true,
+                },
+                ShortAccountMeta {
+                    pubkey: ctx.accounts.token_program.key(),
+                    is_writable: false,
+                },
+            ],
+        };
+
+        builder = builder.add_post_undelegate_actions([action]);
+    }
+
+    builder.build_and_invoke()?;
 
     Ok(())
 }

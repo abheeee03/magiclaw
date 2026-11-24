@@ -820,6 +820,58 @@ fn withdraw_settles_on_l1_and_rejects_replay() {
 }
 
 #[test]
+fn zero_balance_undelegate_and_topup() {
+    let mut env = TestEnv::new();
+    // Simulate player spending balance down to 0
+    env.update_session(|session| {
+        session.state = SessionState::Idle;
+        session.usdc_balance = 0;
+    });
+
+    // Zero balance means no L1 withdrawal to settle
+    let err = expect_err(env.execute_usdc_withdraw());
+    assert_eq!(
+        custom_error(&err.err),
+        Some(anchor_error(ErrorCode::NothingToSettle))
+    );
+
+    // Player tops up on L1 with 5 USDC
+    let topup_amount = 5_000_000;
+    mint_tokens(&mut env.svm, &env.admin, &env.usdc_mint, &env.player_usdc, topup_amount);
+    let accounts = magiclaw::accounts::InitAndDepositSession {
+        owner: env.player.pubkey(),
+        machine_config: env.machine,
+        player_session: env.session,
+        player_ledger: env.ledger,
+        owner_usdc_ata: env.player_usdc,
+        usdc_vault: env.usdc_vault,
+        vault_authority: env.vault_authority,
+        token_program: TOKEN_PROGRAM_ID,
+        system_program: anchor_lang::solana_program::system_program::ID,
+    };
+    expect_ok(send(
+        &mut env.svm,
+        &env.player,
+        &[&env.player],
+        &[Instruction {
+            program_id: magiclaw::ID,
+            accounts: accounts.to_account_metas(None),
+            data: magiclaw::instruction::InitAndDepositSession {
+                deposit_usdc: topup_amount,
+                session_key: env.session_key.pubkey(),
+                session_duration_secs: SESSION_DURATION,
+            }
+            .data(),
+        }],
+    ));
+
+    let session = env.session();
+    assert_eq!(session.usdc_balance, topup_amount);
+    assert_eq!(session.cumulative_deposited_usdc, DEPOSIT + topup_amount);
+    assert_eq!(env.ledger().total_deposited_usdc, DEPOSIT + topup_amount);
+}
+
+#[test]
 fn cancel_stuck_vrf_refunds_and_releases_slot() {
     let mut env = TestEnv::new();
     env.start_play();
