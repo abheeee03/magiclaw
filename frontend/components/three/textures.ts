@@ -1,303 +1,654 @@
 import * as THREE from "three";
 
+/* =========================================================================
+ * 1. ANIMATED RGB DOT-MATRIX MARQUEE ("MAGICLAW" / "YOU WIN!")
+ * ========================================================================= */
+const PIXEL_FONT_7X9: Record<string, string[]> = {
+  M: [
+    "1100011",
+    "1110111",
+    "1111111",
+    "1101011",
+    "1100011",
+    "1100011",
+    "1100011",
+    "1100011",
+    "1100011",
+  ],
+  A: [
+    "0011100",
+    "0111110",
+    "1100011",
+    "1100011",
+    "1111111",
+    "1111111",
+    "1100011",
+    "1100011",
+    "1100011",
+  ],
+  G: [
+    "0111110",
+    "1111111",
+    "1100000",
+    "1100000",
+    "1101111",
+    "1101111",
+    "1100011",
+    "1111111",
+    "0111110",
+  ],
+  I: [
+    "11111",
+    "11111",
+    "00110",
+    "00110",
+    "00110",
+    "00110",
+    "00110",
+    "11111",
+    "11111",
+  ],
+  C: [
+    "0111110",
+    "1111111",
+    "1100000",
+    "1100000",
+    "1100000",
+    "1100000",
+    "1100000",
+    "1111111",
+    "0111110",
+  ],
+  L: [
+    "110000",
+    "110000",
+    "110000",
+    "110000",
+    "110000",
+    "110000",
+    "110000",
+    "111111",
+    "111111",
+  ],
+  W: [
+    "1100011",
+    "1100011",
+    "1100011",
+    "1100011",
+    "1100011",
+    "1101011",
+    "1111111",
+    "1110111",
+    "1100011",
+  ],
+  Y: [
+    "1100011",
+    "1100011",
+    "0110110",
+    "0011100",
+    "0011100",
+    "0011100",
+    "0011100",
+    "0011100",
+    "0011100",
+  ],
+  O: [
+    "0111110",
+    "1111111",
+    "1100011",
+    "1100011",
+    "1100011",
+    "1100011",
+    "1100011",
+    "1111111",
+    "0111110",
+  ],
+  U: [
+    "1100011",
+    "1100011",
+    "1100011",
+    "1100011",
+    "1100011",
+    "1100011",
+    "1100011",
+    "1111111",
+    "0111110",
+  ],
+  N: [
+    "1100011",
+    "1110011",
+    "1111011",
+    "1111111",
+    "1101111",
+    "1100111",
+    "1100011",
+    "1100011",
+    "1100011",
+  ],
+  "!": [
+    "11",
+    "11",
+    "11",
+    "11",
+    "11",
+    "11",
+    "00",
+    "11",
+    "11",
+  ],
+  " ": [
+    "000",
+    "000",
+    "000",
+    "000",
+    "000",
+    "000",
+    "000",
+    "000",
+    "000",
+  ],
+};
+
+export interface MarqueeBootState {
+  active: boolean;
+  power: number;
+  bgSweep: number;
+  letterCount: number;
+}
+
+export class DottedPixelMarquee {
+  public cols = 68;
+  public rows = 15;
+  public cellSize = 15;
+  public padX = 16;
+  public padY = 16;
+
+  public canvas: HTMLCanvasElement;
+  public ctx: CanvasRenderingContext2D;
+  public texture: THREE.CanvasTexture;
+
+  private magiclawLetterIdx: Int8Array;
+  private maskMagiclaw: Uint8Array;
+  private maskYouWin: Uint8Array;
+  private seeds: Float32Array;
+  private _lastDraw = -1;
+
+  constructor() {
+    this.canvas = document.createElement("canvas");
+    this.canvas.width = this.cols * this.cellSize + this.padX * 2;
+    this.canvas.height = this.rows * this.cellSize + this.padY * 2;
+    this.ctx = this.canvas.getContext("2d")!;
+
+    this.texture = new THREE.CanvasTexture(this.canvas);
+    this.texture.colorSpace = THREE.SRGBColorSpace;
+    this.texture.minFilter = THREE.LinearFilter;
+    this.texture.magFilter = THREE.LinearFilter;
+
+    this.magiclawLetterIdx = new Int8Array(this.cols * this.rows).fill(-1);
+    this.maskMagiclaw = this.buildTextMask("MAGICLAW", this.magiclawLetterIdx);
+    this.maskYouWin = this.buildTextMask("YOU WIN!");
+
+    this.seeds = new Float32Array(this.cols * this.rows);
+    for (let i = 0; i < this.seeds.length; i++) {
+      this.seeds[i] = Math.random() * Math.PI * 2;
+    }
+
+    this.update(0, false, { active: true, power: 0, bgSweep: 0, letterCount: 0 });
+  }
+
+  private buildTextMask(text: string, letterIndexOut: Int8Array | null = null): Uint8Array {
+    const mask = new Uint8Array(this.cols * this.rows);
+    const glyphs = text.split("").map((ch) => PIXEL_FONT_7X9[ch] || PIXEL_FONT_7X9[" "]);
+    const gap = 1;
+    const totalW =
+      glyphs.reduce((acc, g) => acc + g[0].length, 0) + gap * (glyphs.length - 1);
+    const startX = Math.floor((this.cols - totalW) / 2);
+    const startY = Math.floor((this.rows - 9) / 2);
+
+    let cursorX = startX;
+    glyphs.forEach((glyph, letterIdx) => {
+      const gw = glyph[0].length;
+      for (let gy = 0; gy < 9; gy++) {
+        for (let gx = 0; gx < gw; gx++) {
+          if (glyph[gy][gx] === "1") {
+            const mx = cursorX + gx;
+            const my = startY + gy;
+            if (mx >= 0 && mx < this.cols && my >= 0 && my < this.rows) {
+              const idx = my * this.cols + mx;
+              mask[idx] = 1;
+              if (letterIndexOut) letterIndexOut[idx] = letterIdx;
+            }
+          }
+        }
+      }
+      cursorX += gw + gap;
+    });
+    return mask;
+  }
+
+  public update(t: number, celebrating: boolean, bootState: MarqueeBootState | null = null) {
+    const minStep = bootState && bootState.active ? 0.016 : 0.032;
+    if (Math.abs(t - this._lastDraw) < minStep && this._lastDraw >= 0) return;
+    this._lastDraw = t;
+
+    const ctx = this.ctx;
+    const W = this.canvas.width;
+    const H = this.canvas.height;
+    const cs = this.cellSize;
+
+    const isBoot = Boolean(bootState && bootState.active);
+    const power = isBoot && bootState ? bootState.power : 1.0;
+
+    if (power <= 0.005) {
+      ctx.fillStyle = "#070812";
+      ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = "#111528";
+      for (let r = 0; r < this.rows; r++) {
+        const cy = this.padY + r * cs + cs * 0.5;
+        for (let c = 0; c < this.cols; c++) {
+          const cx = this.padX + c * cs + cs * 0.5;
+          ctx.beginPath();
+          ctx.arc(cx, cy, cs * 0.22, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      this.texture.needsUpdate = true;
+      return;
+    }
+
+    ctx.fillStyle = "#070812";
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.save();
+    ctx.globalAlpha = Math.min(
+      1,
+      power * (isBoot && bootState ? Math.min(1, bootState.bgSweep * 1.4) : 1)
+    );
+    const bgGrad = ctx.createLinearGradient(0, 0, W, 0);
+    bgGrad.addColorStop(0.0, "#120d36");
+    bgGrad.addColorStop(0.45, "#2b0d3c");
+    bgGrad.addColorStop(0.78, "#4a122e");
+    bgGrad.addColorStop(1.0, "#5a1919");
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, W, H);
+    ctx.restore();
+
+    const letterRatio = isBoot && bootState ? Math.min(1, bootState.letterCount / 8) : 1.0;
+    if (letterRatio > 0.02) {
+      const wash = ctx.createRadialGradient(
+        W * 0.5,
+        H * 0.5,
+        10,
+        W * 0.5,
+        H * 0.5,
+        W * 0.48
+      );
+      const alphaScale = letterRatio * power;
+      wash.addColorStop(
+        0,
+        celebrating
+          ? `rgba(255, 220, 90, ${0.34 * alphaScale})`
+          : `rgba(255, 165, 65, ${0.24 * alphaScale})`
+      );
+      wash.addColorStop(0.6, `rgba(236, 72, 153, ${0.14 * alphaScale})`);
+      wash.addColorStop(1, "rgba(0, 0, 0, 0)");
+      ctx.fillStyle = wash;
+      ctx.fillRect(0, 0, W, H);
+    }
+
+    const activeMask =
+      !isBoot && celebrating && Math.floor(t * 2.4) % 2 === 1
+        ? this.maskYouWin
+        : this.maskMagiclaw;
+
+    const wavePos = ((t * 26) % (this.cols + 26)) - 13;
+    const sweepColLimit =
+      isBoot && bootState ? bootState.bgSweep * (this.cols + 6) : this.cols + 10;
+
+    for (let r = 0; r < this.rows; r++) {
+      const cy = this.padY + r * cs + cs * 0.5;
+      for (let c = 0; c < this.cols; c++) {
+        const cx = this.padX + c * cs + cs * 0.5;
+        const idx = r * this.cols + c;
+        const u = c / (this.cols - 1);
+
+        const diagCoord = c + r * 0.4;
+        if (isBoot && diagCoord > sweepColLimit) {
+          ctx.fillStyle = "#111528";
+          ctx.beginPath();
+          ctx.arc(cx, cy, cs * 0.22, 0, Math.PI * 2);
+          ctx.fill();
+          continue;
+        }
+
+        let isLit = activeMask[idx] === 1;
+        let letterFlash = 0;
+        if (isLit && isBoot && bootState) {
+          const lIdx = this.magiclawLetterIdx[idx];
+          if (lIdx >= bootState.letterCount) {
+            isLit = false;
+          } else {
+            const age = bootState.letterCount - lIdx;
+            if (age < 1.0) letterFlash = 1.0 - age;
+          }
+        }
+
+        const waveDist = Math.abs(c - r * 0.55 - wavePos);
+        const waveBoost = isBoot
+          ? letterFlash * 0.8
+          : Math.max(0, 1 - waveDist / 6.5);
+
+        const isBorder =
+          r === 0 || r === this.rows - 1 || c === 0 || c === this.cols - 1;
+        const chaseOn =
+          !isBoot &&
+          celebrating &&
+          isBorder &&
+          (c + r + Math.floor(t * 16)) % 4 < 2;
+
+        if (isLit) {
+          const shimmer = 0.85 + 0.15 * Math.sin(t * 7.5 + this.seeds[idx]);
+          const boost = Math.min(1, shimmer + waveBoost * 0.45);
+          const haloR = cs * (0.64 + waveBoost * 0.24);
+          const grd = ctx.createRadialGradient(cx, cy, 0.8, cx, cy, haloR);
+          if (celebrating) {
+            grd.addColorStop(0.0, "#ffffff");
+            grd.addColorStop(0.38, "#fef08a");
+            grd.addColorStop(0.72, "rgba(251, 146, 60, 0.72)");
+            grd.addColorStop(1.0, "rgba(251, 146, 60, 0)");
+          } else {
+            grd.addColorStop(0.0, boost > 0.94 ? "#ffffff" : "#fff7cc");
+            grd.addColorStop(0.42, "#ffbe44");
+            grd.addColorStop(0.76, "rgba(255, 115, 35, 0.65)");
+            grd.addColorStop(1.0, "rgba(255, 90, 20, 0)");
+          }
+          ctx.fillStyle = grd;
+          ctx.beginPath();
+          ctx.arc(cx, cy, haloR, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.fillStyle =
+            boost > 0.92 || letterFlash > 0.25 ? "#ffffff" : "#fff3b0";
+          ctx.beginPath();
+          ctx.arc(cx, cy, cs * (0.31 + letterFlash * 0.06), 0, Math.PI * 2);
+          ctx.fill();
+        } else if (chaseOn) {
+          ctx.fillStyle = "rgba(52, 211, 153, 0.95)";
+          ctx.beginPath();
+          ctx.arc(cx, cy, cs * 0.32, 0, Math.PI * 2);
+          ctx.fill();
+        } else {
+          let red: number, green: number, blue: number;
+          if (u < 0.48) {
+            const k = u / 0.48;
+            red = Math.round(70 + k * 145);
+            green = Math.round(98 - k * 34);
+            blue = Math.round(255 - k * 25);
+          } else {
+            const k = (u - 0.48) / 0.52;
+            red = Math.round(215 + k * 40);
+            green = Math.round(64 + k * 46);
+            blue = Math.round(230 - k * 185);
+          }
+          const sweepEdge = isBoot
+            ? Math.max(0, 1 - Math.abs(diagCoord - sweepColLimit) / 3.5)
+            : 0;
+          const bgPulse =
+            (0.72 +
+              waveBoost * 0.38 +
+              sweepEdge * 0.65 +
+              0.08 * Math.sin(t * 3.0 + u * 6.0)) *
+            power;
+          const rr = Math.min(255, Math.round(red * bgPulse));
+          const gg = Math.min(255, Math.round(green * bgPulse));
+          const bb = Math.min(255, Math.round(blue * bgPulse));
+
+          ctx.fillStyle = `rgba(${rr}, ${gg}, ${bb}, 0.88)`;
+          ctx.beginPath();
+          ctx.arc(cx, cy, cs * 0.25, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    }
+
+    this.texture.needsUpdate = true;
+  }
+}
+
+/* =========================================================================
+ * 2. PROCEDURAL PBR TEXTURES (METAL, GOLD COIN, CEILING LEDS, GLOW, LCD)
+ * ========================================================================= */
 export function createBrushedMetalTextures() {
   if (typeof document === "undefined") {
-    return { map: new THREE.Texture(), roughnessMap: new THREE.Texture(), bumpMap: new THREE.Texture() };
+    return {
+      map: new THREE.Texture(),
+      roughnessMap: new THREE.Texture(),
+      bumpMap: new THREE.Texture(),
+    };
   }
   const size = 512;
-  const colorCanvas = document.createElement("canvas");
-  colorCanvas.width = colorCanvas.height = size;
-  const cctx = colorCanvas.getContext("2d")!;
+  const c = document.createElement("canvas");
+  c.width = c.height = size;
+  const ctx = c.getContext("2d")!;
+  ctx.fillStyle = "#ccd4de";
+  ctx.fillRect(0, 0, size, size);
 
-  const roughCanvas = document.createElement("canvas");
-  roughCanvas.width = roughCanvas.height = size;
-  const rctx = roughCanvas.getContext("2d")!;
-
-  cctx.fillStyle = "#c8d0d8";
-  cctx.fillRect(0, 0, size, size);
-  rctx.fillStyle = "#555555";
+  const r = document.createElement("canvas");
+  r.width = r.height = size;
+  const rctx = r.getContext("2d")!;
+  rctx.fillStyle = "#484848";
   rctx.fillRect(0, 0, size, size);
 
-  for (let i = 0; i < 2400; i++) {
+  for (let i = 0; i < 2600; i++) {
     const y = Math.random() * size;
-    const w = 40 + Math.random() * 260;
     const x = Math.random() * size;
-    const v = 175 + Math.floor(Math.random() * 60);
-    cctx.fillStyle = `rgba(${v},${v + 4},${v + 10},0.16)`;
-    cctx.fillRect(x, y, w, 1.2);
-    const rv = 55 + Math.floor(Math.random() * 65);
+    const w = 35 + Math.random() * 240;
+    const v = 180 + Math.floor(Math.random() * 58);
+    ctx.fillStyle = `rgba(${v},${v + 4},${v + 8},0.16)`;
+    ctx.fillRect(x, y, w, 1.2);
+    const rv = 45 + Math.floor(Math.random() * 65);
     rctx.fillStyle = `rgba(${rv},${rv},${rv},0.25)`;
     rctx.fillRect(x, y, w, 1.2);
   }
 
-  const map = new THREE.CanvasTexture(colorCanvas);
+  const map = new THREE.CanvasTexture(c);
   map.colorSpace = THREE.SRGBColorSpace;
   map.wrapS = map.wrapT = THREE.RepeatWrapping;
-
-  const roughnessMap = new THREE.CanvasTexture(roughCanvas);
+  const roughnessMap = new THREE.CanvasTexture(r);
   roughnessMap.wrapS = roughnessMap.wrapT = THREE.RepeatWrapping;
-
   return { map, roughnessMap, bumpMap: roughnessMap };
 }
 
-export function createPlushTextures() {
-  if (typeof document === "undefined") return new THREE.Texture();
-  const size = 256;
-  const canvas = document.createElement("canvas");
-  canvas.width = canvas.height = size;
-  const ctx = canvas.getContext("2d")!;
-  const img = ctx.createImageData(size, size);
-  const d = img.data;
-  for (let i = 0; i < d.length; i += 4) {
-    const n = 120 + Math.floor(Math.random() * 115);
-    d[i] = d[i + 1] = d[i + 2] = n;
-    d[i + 3] = 255;
-  }
-  ctx.putImageData(img, 0, 0);
-
-  ctx.strokeStyle = "rgba(255,255,255,0.16)";
-  ctx.lineWidth = 1;
-  for (let i = 0; i < 900; i++) {
-    const x = Math.random() * size;
-    const y = Math.random() * size;
-    const ang = Math.random() * Math.PI * 2;
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    ctx.lineTo(x + Math.cos(ang) * 4.5, y + Math.sin(ang) * 4.5);
-    ctx.stroke();
-  }
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(4, 4);
-  return tex;
-}
-
-export function createPerforatedDeckTexture() {
+export function createGoldCoinTextures() {
   if (typeof document === "undefined") {
     return { map: new THREE.Texture(), bumpMap: new THREE.Texture() };
   }
-  const size = 512;
-  const canvas = document.createElement("canvas");
-  canvas.width = canvas.height = size;
-  const ctx = canvas.getContext("2d")!;
+  const size = 256;
+  const c = document.createElement("canvas");
+  c.width = c.height = size;
+  const ctx = c.getContext("2d")!;
 
-  const bumpCanvas = document.createElement("canvas");
-  bumpCanvas.width = bumpCanvas.height = size;
-  const bctx = bumpCanvas.getContext("2d")!;
+  const b = document.createElement("canvas");
+  b.width = b.height = size;
+  const bctx = b.getContext("2d")!;
 
-  const grad = ctx.createLinearGradient(0, 0, size, size);
-  grad.addColorStop(0, "#1e2636");
-  grad.addColorStop(1, "#141a26");
+  const grad = ctx.createRadialGradient(
+    size * 0.4,
+    size * 0.35,
+    8,
+    size / 2,
+    size / 2,
+    size * 0.5
+  );
+  grad.addColorStop(0, "#fef08a");
+  grad.addColorStop(0.55, "#eab308");
+  grad.addColorStop(1, "#92400e");
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, size, size);
 
-  bctx.fillStyle = "#c8c8c8";
+  bctx.fillStyle = "#707070";
   bctx.fillRect(0, 0, size, size);
 
-  const step = 20;
-  for (let y = 10; y < size; y += step) {
-    for (let x = 10; x < size; x += step) {
-      const ox = ((y / step) % 2) * (step * 0.5);
-      ctx.beginPath();
-      ctx.arc((x + ox) % size, y, 3.1, 0, Math.PI * 2);
-      ctx.fillStyle = "#090d16";
-      ctx.fill();
-      ctx.strokeStyle = "rgba(148, 163, 184, 0.12)";
-      ctx.lineWidth = 0.8;
-      ctx.stroke();
+  ctx.strokeStyle = "#fef9c3";
+  ctx.lineWidth = 10;
+  ctx.beginPath();
+  ctx.arc(128, 128, 110, 0, Math.PI * 2);
+  ctx.stroke();
 
-      bctx.beginPath();
-      bctx.arc((x + ox) % size, y, 3.3, 0, Math.PI * 2);
-      bctx.fillStyle = "#1a1a1a";
-      bctx.fill();
-    }
+  bctx.strokeStyle = "#ffffff";
+  bctx.lineWidth = 12;
+  bctx.beginPath();
+  bctx.arc(128, 128, 110, 0, Math.PI * 2);
+  bctx.stroke();
+
+  for (let i = 0; i < 36; i++) {
+    const a = (i * Math.PI * 2) / 36;
+    const x = 128 + Math.cos(a) * 94;
+    const y = 128 + Math.sin(a) * 94;
+    ctx.fillStyle = "#fde047";
+    ctx.beginPath();
+    ctx.arc(x, y, 3, 0, Math.PI * 2);
+    ctx.fill();
+    bctx.fillStyle = "#e5e5e5";
+    bctx.beginPath();
+    bctx.arc(x, y, 3.5, 0, Math.PI * 2);
+    bctx.fill();
   }
 
-  const map = new THREE.CanvasTexture(canvas);
+  const drawEmblem = (targetCtx: CanvasRenderingContext2D, color: string) => {
+    targetCtx.save();
+    targetCtx.translate(128, 128);
+    targetCtx.fillStyle = color;
+    targetCtx.strokeStyle = color;
+    targetCtx.lineWidth = 6;
+    targetCtx.beginPath();
+    for (let i = 0; i < 10; i++) {
+      const rad = i % 2 === 0 ? 58 : 26;
+      const a = (i * Math.PI) / 5 - Math.PI / 2;
+      if (i === 0) targetCtx.moveTo(Math.cos(a) * rad, Math.sin(a) * rad);
+      else targetCtx.lineTo(Math.cos(a) * rad, Math.sin(a) * rad);
+    }
+    targetCtx.closePath();
+    targetCtx.fill();
+    targetCtx.restore();
+  };
+  drawEmblem(ctx, "#b45309");
+  drawEmblem(bctx, "#ffffff");
+
+  ctx.fillStyle = "#fef08a";
+  ctx.font = '900 44px "Orbitron", sans-serif';
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("M", 128, 132);
+
+  const map = new THREE.CanvasTexture(c);
   map.colorSpace = THREE.SRGBColorSpace;
-  map.wrapS = map.wrapT = THREE.RepeatWrapping;
-  map.repeat.set(3, 3);
-
-  const bumpMap = new THREE.CanvasTexture(bumpCanvas);
-  bumpMap.wrapS = bumpMap.wrapT = THREE.RepeatWrapping;
-  bumpMap.repeat.set(3, 3);
-
+  const bumpMap = new THREE.CanvasTexture(b);
   return { map, bumpMap };
 }
 
-export function createMarqueeTexture() {
+export function createCeilingLEDGridTexture() {
   if (typeof document === "undefined") return new THREE.Texture();
-  const w = 1024;
+  const w = 512;
   const h = 256;
-  const canvas = document.createElement("canvas");
-  canvas.width = w;
-  canvas.height = h;
-  const ctx = canvas.getContext("2d")!;
-
-  const bg = ctx.createLinearGradient(0, 0, w, h);
-  bg.addColorStop(0, "#08061a");
-  bg.addColorStop(0.5, "#1f0f38");
-  bg.addColorStop(1, "#061324");
-  ctx.fillStyle = bg;
+  const c = document.createElement("canvas");
+  c.width = w;
+  c.height = h;
+  const ctx = c.getContext("2d")!;
+  ctx.fillStyle = "#1e293b";
   ctx.fillRect(0, 0, w, h);
 
-  const glow = ctx.createRadialGradient(w * 0.5, h * 0.5, 20, w * 0.5, h * 0.5, 480);
-  glow.addColorStop(0, "rgba(236, 72, 153, 0.4)");
-  glow.addColorStop(0.55, "rgba(6, 182, 212, 0.28)");
-  glow.addColorStop(1, "rgba(0, 0, 0, 0)");
-  ctx.fillStyle = glow;
-  ctx.fillRect(0, 0, w, h);
-
-  // Neon borders
-  ctx.strokeStyle = "#22d3ee";
-  ctx.lineWidth = 6;
-  ctx.shadowColor = "#06b6d4";
-  ctx.shadowBlur = 18;
-  ctx.strokeRect(18, 18, w - 36, h - 36);
-
-  ctx.strokeStyle = "#f472b6";
-  ctx.lineWidth = 3;
-  ctx.shadowColor = "#ec4899";
-  ctx.shadowBlur = 12;
-  ctx.strokeRect(28, 28, w - 56, h - 56);
-
-  const drawStar = (cx: number, cy: number, r: number, color: string) => {
-    ctx.save();
-    ctx.fillStyle = color;
-    ctx.shadowColor = color;
-    ctx.shadowBlur = 14;
-    ctx.beginPath();
-    for (let i = 0; i < 8; i++) {
-      const rad = i % 2 === 0 ? r : r * 0.35;
-      const a = (i * Math.PI) / 4;
-      ctx.lineTo(cx + Math.cos(a) * rad, cy + Math.sin(a) * rad);
+  const cols = 16;
+  const rows = 8;
+  const pad = 10;
+  const cw = (w - pad * 2) / cols;
+  const ch = (h - pad * 2) / rows;
+  for (let r = 0; r < rows; r++) {
+    for (let col = 0; col < cols; col++) {
+      const x = pad + col * cw + 3;
+      const y = pad + r * ch + 3;
+      const sw = cw - 6;
+      const sh = ch - 6;
+      ctx.fillStyle = "#ffffff";
+      ctx.shadowColor = "#e0f2fe";
+      ctx.shadowBlur = 8;
+      ctx.fillRect(x, y, sw, sh);
     }
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
-  };
-  drawStar(92, 128, 26, "#fde047");
-  drawStar(w - 92, 128, 26, "#fde047");
-  drawStar(150, 72, 11, "#38bdf8");
-  drawStar(w - 150, 184, 11, "#f472b6");
-
-  // Title: CLAWVAULT
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.font = '900 90px "Orbitron", sans-serif';
-
-  ctx.shadowColor = "#ec4899";
-  ctx.shadowBlur = 28;
-  ctx.lineWidth = 10;
-  ctx.strokeStyle = "#f472b6";
-  ctx.strokeText("CLAWVAULT", w / 2, h / 2 - 8);
-
-  const textGrad = ctx.createLinearGradient(0, 62, 0, 175);
-  textGrad.addColorStop(0, "#ffffff");
-  textGrad.addColorStop(0.35, "#a5f3fc");
-  textGrad.addColorStop(0.55, "#38bdf8");
-  textGrad.addColorStop(0.75, "#f0abfc");
-  textGrad.addColorStop(1, "#fef08a");
-  ctx.shadowColor = "#22d3ee";
-  ctx.shadowBlur = 16;
-  ctx.fillStyle = textGrad;
-  ctx.fillText("CLAWVAULT", w / 2, h / 2 - 8);
-
-  ctx.shadowBlur = 10;
-  ctx.font = '700 20px "Inter", sans-serif';
-  ctx.fillStyle = "#fef08a";
-  ctx.fillText("⚡ POWERED BY MAGICBLOCK EPHEMERAL ROLLUPS & VRF ⚡", w / 2, h - 52);
-
-  const tex = new THREE.CanvasTexture(canvas);
+  }
+  ctx.shadowBlur = 0;
+  const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
 }
 
-export interface CabinetDisplayObj {
-  canvas: HTMLCanvasElement | null;
-  ctx: CanvasRenderingContext2D | null;
+export function createGlowSpriteTexture(
+  innerColor = "#ffffff",
+  midColor = "#ff4da6",
+  outerColor = "rgba(255,77,166,0)"
+) {
+  if (typeof document === "undefined") return new THREE.Texture();
+  const size = 256;
+  const c = document.createElement("canvas");
+  c.width = c.height = size;
+  const ctx = c.getContext("2d")!;
+  const g = ctx.createRadialGradient(128, 128, 2, 128, 128, 128);
+  g.addColorStop(0.0, innerColor);
+  g.addColorStop(0.28, midColor);
+  g.addColorStop(1.0, outerColor);
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, size, size);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+export interface LimeLCDCanvasObj {
+  canvas: HTMLCanvasElement;
+  ctx: CanvasRenderingContext2D;
   tex: THREE.CanvasTexture;
 }
 
-export function createCabinetDisplayCanvas(): CabinetDisplayObj {
-  if (typeof document === "undefined") {
-    return { canvas: null, ctx: null, tex: new THREE.Texture() as THREE.CanvasTexture };
-  }
+export function createLimeLCDCanvas(): LimeLCDCanvasObj {
   const c = document.createElement("canvas");
-  c.width = 512;
-  c.height = 128;
+  c.width = 320;
+  c.height = 160;
   const ctx = c.getContext("2d")!;
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   return { canvas: c, ctx, tex };
 }
 
-export function updateCabinetDisplay(
-  displayObj: CabinetDisplayObj,
-  balanceUsdc: string,
+export function updateLimeLCD(
+  lcd: LimeLCDCanvasObj,
+  credits: number,
   timer: number,
-  statusText: string
+  status: string
 ) {
-  if (!displayObj.canvas || !displayObj.ctx) return;
-  const { ctx, tex, canvas } = displayObj;
-  ctx.fillStyle = "#070a12";
+  const { ctx, tex, canvas } = lcd;
+  const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+  grad.addColorStop(0, "#bef264");
+  grad.addColorStop(1, "#84cc16");
+  ctx.fillStyle = grad;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  ctx.strokeStyle = "rgba(34, 211, 238, 0.14)";
-  ctx.lineWidth = 2;
-  ctx.strokeRect(4, 4, canvas.width - 8, canvas.height - 8);
+  ctx.strokeStyle = "rgba(20, 45, 10, 0.35)";
+  ctx.lineWidth = 4;
+  ctx.strokeRect(6, 6, canvas.width - 12, canvas.height - 12);
 
-  // Balance block
-  ctx.fillStyle = "#94a3b8";
-  ctx.font = "bold 16px sans-serif";
-  ctx.fillText("USDC BAL", 20, 32);
-  ctx.fillStyle = "#fbbf24";
-  ctx.shadowColor = "#f59e0b";
-  ctx.shadowBlur = 10;
-  ctx.font = "900 44px monospace";
-  ctx.fillText(balanceUsdc, 18, 92);
+  ctx.fillStyle = "#1a2e05";
+  ctx.font = "bold 20px monospace";
+  ctx.fillText(`CR:${String(Math.max(0, Math.floor(credits))).padStart(2, "0")}`, 20, 42);
+  ctx.fillText(`TM:${Math.ceil(timer).toString().padStart(2, "0")}s`, 172, 42);
 
-  // Timer block
-  ctx.shadowBlur = 0;
-  ctx.fillStyle = "#94a3b8";
-  ctx.font = "bold 16px sans-serif";
-  ctx.fillText("TIME", 210, 32);
-  ctx.fillStyle = timer <= 5 ? "#f87171" : "#22d3ee";
-  ctx.shadowColor = timer <= 5 ? "#ef4444" : "#06b6d4";
-  ctx.shadowBlur = 10;
-  ctx.font = "900 48px monospace";
-  ctx.fillText(Math.ceil(timer).toString().padStart(2, "0"), 208, 92);
+  ctx.fillStyle = "rgba(26, 46, 5, 0.25)";
+  ctx.fillRect(18, 58, canvas.width - 36, 3);
 
-  // Status block
-  ctx.shadowBlur = 0;
-  ctx.fillStyle = "#94a3b8";
-  ctx.font = "bold 16px sans-serif";
-  ctx.fillText("ER STATE", 335, 32);
-  ctx.fillStyle = "#f472b6";
-  ctx.shadowColor = "#ec4899";
-  ctx.shadowBlur = 8;
-  ctx.font = "900 28px monospace";
-  ctx.fillText(statusText.slice(0, 10).toUpperCase(), 332, 86);
-  ctx.shadowBlur = 0;
+  ctx.fillStyle = "#1a2e05";
+  ctx.font = "900 30px monospace";
+  ctx.fillText(status.slice(0, 12), 20, 114);
+
+  ctx.font = "bold 14px monospace";
+  ctx.fillText("MAGICLAW DELUXE", 20, 142);
 
   tex.needsUpdate = true;
-}
-
-export function createChuteDecalTexture() {
-  if (typeof document === "undefined") return new THREE.Texture();
-  const c = document.createElement("canvas");
-  c.width = 256;
-  c.height = 128;
-  const ctx = c.getContext("2d")!;
-  ctx.clearRect(0, 0, 256, 128);
-  ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
-  ctx.font = '900 24px "Orbitron", sans-serif';
-  ctx.textAlign = "center";
-  ctx.fillText("VAULT CHUTE", 128, 44);
-  ctx.fillStyle = "#22d3ee";
-  ctx.font = "900 36px sans-serif";
-  ctx.fillText("▼  ▼", 128, 92);
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
 }

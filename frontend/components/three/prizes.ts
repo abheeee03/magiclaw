@@ -1,387 +1,550 @@
 import * as THREE from "three";
-import { createPlushTextures } from "./textures";
 
-const plushBumpTex = typeof document !== "undefined" ? createPlushTextures() : new THREE.Texture();
-
-function makePlushMat(colorHex: number) {
-  return new THREE.MeshPhysicalMaterial({
-    color: colorHex,
-    roughness: 0.88,
-    metalness: 0.0,
-    sheen: 0.78,
-    sheenRoughness: 0.65,
-    sheenColor: new THREE.Color(colorHex).lerp(new THREE.Color(0xffffff), 0.45),
-    bumpMap: plushBumpTex,
-    bumpScale: 0.012,
-  });
+export interface FlavorSpec {
+  id: string;
+  name: string;
+  subtitle: string;
+  rarity: "Common" | "Rare" | "Epic" | "Legendary";
+  tier: number;
+  points: number;
+  icon: string;
+  primary: string;
+  secondary: string;
+  accent: string;
+  badge: string;
+  artType:
+    | "crackers"
+    | "cookies"
+    | "chips"
+    | "wafers"
+    | "rolls"
+    | "mix"
+    | "pretzels"
+    | "gold";
+  dims: [number, number, number];
+  mass: number;
+  gripFactor: number;
+  foil?: boolean;
 }
 
-const chromeMat = new THREE.MeshStandardMaterial({
-  color: 0xf1f5f9,
-  metalness: 0.96,
-  roughness: 0.08,
-});
+export const FLAVOR_CATALOG: Record<string, FlavorSpec> = {
+  cheez: {
+    id: "cheez",
+    name: "CHEEZ CRISP",
+    subtitle: "Crunchy Cheddar Crackers",
+    rarity: "Common",
+    tier: 0,
+    points: 100,
+    icon: "🧀",
+    primary: "#dc2626",
+    secondary: "#facc15",
+    accent: "#fef08a",
+    badge: "CHEDDAR",
+    artType: "crackers",
+    dims: [0.22, 0.14, 0.28],
+    mass: 0.95,
+    gripFactor: 1.04,
+  },
+  choco: {
+    id: "choco",
+    name: "CHOCO BITES",
+    subtitle: "Double Chip Cookies",
+    rarity: "Common",
+    tier: 0,
+    points: 120,
+    icon: "🍪",
+    primary: "#1d4ed8",
+    secondary: "#f59e0b",
+    accent: "#fef3c7",
+    badge: "COOKIES",
+    artType: "cookies",
+    dims: [0.24, 0.15, 0.29],
+    mass: 1.0,
+    gripFactor: 1.02,
+  },
+  honey: {
+    id: "honey",
+    name: "HONEY PUFFS",
+    subtitle: "Sweet Wavy Butter Chips",
+    rarity: "Common",
+    tier: 0,
+    points: 120,
+    icon: "🍯",
+    primary: "#eab308",
+    secondary: "#dc2626",
+    accent: "#fffbeb",
+    badge: "HONEY",
+    artType: "chips",
+    dims: [0.21, 0.16, 0.27],
+    mass: 0.9,
+    gripFactor: 1.03,
+  },
+  berry: {
+    id: "berry",
+    name: "BERRY WAFER",
+    subtitle: "Strawberry Cream Layers",
+    rarity: "Rare",
+    tier: 1,
+    points: 200,
+    icon: "🍓",
+    primary: "#ec4899",
+    secondary: "#fff1f2",
+    accent: "#fde047",
+    badge: "BERRY",
+    artType: "wafers",
+    dims: [0.22, 0.145, 0.275],
+    mass: 0.95,
+    gripFactor: 1.0,
+  },
+  matcha: {
+    id: "matcha",
+    name: "MATCHA ROLLS",
+    subtitle: "Crispy Green Tea Cream",
+    rarity: "Rare",
+    tier: 1,
+    points: 220,
+    icon: "🍵",
+    primary: "#16a34a",
+    secondary: "#fef9c3",
+    accent: "#bbf7d0",
+    badge: "MATCHA",
+    artType: "rolls",
+    dims: [0.23, 0.14, 0.28],
+    mass: 1.0,
+    gripFactor: 0.98,
+  },
+  spicy: {
+    id: "spicy",
+    name: "SPICY CRUNCH",
+    subtitle: "Blazin’ Chili Snack Mix",
+    rarity: "Rare",
+    tier: 1,
+    points: 250,
+    icon: "🌶️",
+    primary: "#ea580c",
+    secondary: "#fde047",
+    accent: "#7c2d12",
+    badge: "HOT!",
+    artType: "mix",
+    dims: [0.22, 0.155, 0.275],
+    mass: 1.05,
+    gripFactor: 0.96,
+  },
+  pretzel: {
+    id: "pretzel",
+    name: "SALT PRETZELS",
+    subtitle: "Classic Baked Twists",
+    rarity: "Epic",
+    tier: 2,
+    points: 350,
+    icon: "🥨",
+    primary: "#0284c7",
+    secondary: "#facc15",
+    accent: "#e0f2fe",
+    badge: "BAKED",
+    artType: "pretzels",
+    dims: [0.21, 0.16, 0.27],
+    mass: 1.08,
+    gripFactor: 0.94,
+  },
+  gold: {
+    id: "gold",
+    name: "MAGIC GOLD",
+    subtitle: "Mystery Foil Bonus Box",
+    rarity: "Legendary",
+    tier: 3,
+    points: 1000,
+    icon: "✨",
+    primary: "#d97706",
+    secondary: "#fef08a",
+    accent: "#ffffff",
+    badge: "MYSTERY",
+    artType: "gold",
+    dims: [0.23, 0.155, 0.285],
+    mass: 1.25,
+    gripFactor: 0.88,
+    foil: true,
+  },
+};
 
-const glossyBlackMat = new THREE.MeshStandardMaterial({
-  color: 0x0b0f19,
-  roughness: 0.08,
-  metalness: 0.15,
-});
+export const SNACK_MANIFEST: string[] = [
+  "cheez", "cheez", "cheez", "cheez", "cheez", "cheez",
+  "choco", "choco", "choco", "choco", "choco", "choco",
+  "honey", "honey", "honey", "honey", "honey",
+  "berry", "berry", "berry", "berry", "berry",
+  "matcha", "matcha", "matcha", "matcha",
+  "spicy", "spicy", "spicy", "spicy",
+  "pretzel", "pretzel", "pretzel", "pretzel",
+  "gold", "gold",
+];
 
-// Tier 0: Common (Matte Neon Cyan Orb / Shiba)
-export function buildCyanOrbMesh(variant: number = 0) {
-  const g = new THREE.Group();
-  const mat = new THREE.MeshPhysicalMaterial({
-    color: 0x06b6d4,
-    emissive: 0x0891b2,
-    emissiveIntensity: 0.4,
-    roughness: 0.22,
-    metalness: 0.1,
-    clearcoat: 0.8,
-  });
-  const sphere = new THREE.Mesh(new THREE.SphereGeometry(0.145, 24, 20), mat);
-  sphere.castShadow = true;
-  g.add(sphere);
+function drawSnackIllustration(
+  ctx: CanvasRenderingContext2D,
+  artType: FlavorSpec["artType"],
+  cx: number,
+  cy: number,
+  scale = 1.0
+) {
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.scale(scale, scale);
 
-  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.148, 0.012, 10, 24), chromeMat);
-  ring.rotation.x = Math.PI / 2;
-  g.add(ring);
-
-  // Tiny emblem inside
-  const core = new THREE.Mesh(
-    new THREE.OctahedronGeometry(0.05, 0),
-    new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0x22d3ee, emissiveIntensity: 1.2 })
-  );
-  g.add(core);
-  return g;
-}
-
-// Tier 1: Rare (Metallic Purple Capsule / JUP Gachapon)
-export function buildPurpleCapsuleMesh(variant: number = 0) {
-  const g = new THREE.Group();
-  const botMat = new THREE.MeshPhysicalMaterial({
-    color: 0x7e22ce,
-    roughness: 0.15,
-    metalness: 0.85,
-    clearcoat: 1.0,
-  });
-  const bottom = new THREE.Mesh(
-    new THREE.SphereGeometry(0.148, 24, 16, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2),
-    botMat
-  );
-  bottom.castShadow = true;
-  g.add(bottom);
-
-  const topMat = new THREE.MeshPhysicalMaterial({
-    color: 0xc084fc,
-    transparent: true,
-    opacity: 0.65,
-    roughness: 0.06,
-    metalness: 0.15,
-    clearcoat: 1.0,
-    depthWrite: false,
-  });
-  const top = new THREE.Mesh(
-    new THREE.SphereGeometry(0.148, 24, 16, 0, Math.PI * 2, 0, Math.PI / 2),
-    topMat
-  );
-  g.add(top);
-
-  const seam = new THREE.Mesh(new THREE.TorusGeometry(0.149, 0.01, 10, 28), chromeMat);
-  seam.rotation.x = Math.PI / 2;
-  g.add(seam);
-
-  // Floating glowing star inside
-  const star = new THREE.Mesh(
-    new THREE.DodecahedronGeometry(0.06, 0),
-    new THREE.MeshStandardMaterial({
-      color: 0xfef08a,
-      emissive: 0xa855f7,
-      emissiveIntensity: 1.5,
-      metalness: 0.5,
-    })
-  );
-  star.position.y = 0.02;
-  g.add(star);
-  return g;
-}
-
-// Tier 2: Epic (Holographic Prism Cube / Retro Console)
-export function buildPrismCubeMesh(variant: number = 0) {
-  const g = new THREE.Group();
-  const cubeMat = new THREE.MeshPhysicalMaterial({
-    color: 0xf472b6,
-    roughness: 0.08,
-    metalness: 0.45,
-    transmission: 0.4,
-    thickness: 0.2,
-    clearcoat: 1.0,
-    emissive: 0xdb2777,
-    emissiveIntensity: 0.5,
-  });
-
-  const cube = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.24, 0.24), cubeMat);
-  cube.castShadow = true;
-  g.add(cube);
-
-  // Outer wireframe edges
-  const wireGeo = new THREE.EdgesGeometry(new THREE.BoxGeometry(0.245, 0.245, 0.245));
-  const wireMat = new THREE.LineBasicMaterial({ color: 0x67e8f9, linewidth: 2 });
-  const wire = new THREE.LineSegments(wireGeo, wireMat);
-  g.add(wire);
-
-  // Inner floating core
-  const core = new THREE.Mesh(
-    new THREE.OctahedronGeometry(0.08, 0),
-    new THREE.MeshStandardMaterial({
-      color: 0x60a5fa,
-      emissive: 0x38bdf8,
-      emissiveIntensity: 2.0,
-    })
-  );
-  g.add(core);
-  return g;
-}
-
-// Tier 3: Grail (24K Gold Royal Crown)
-export function buildGoldCrownMesh() {
-  const g = new THREE.Group();
-  const goldMat = new THREE.MeshStandardMaterial({
-    color: 0xfbbf24,
-    metalness: 0.96,
-    roughness: 0.12,
-  });
-  const velvetMat = makePlushMat(0x831843);
-
-  const cap = new THREE.Mesh(new THREE.SphereGeometry(0.12, 16, 14), velvetMat);
-  cap.scale.set(1, 0.85, 1);
-  cap.position.y = -0.01;
-  g.add(cap);
-
-  const band = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.13, 0.09, 24, 1, true), goldMat);
-  band.material.side = THREE.DoubleSide;
-  band.position.y = -0.04;
-  band.castShadow = true;
-  g.add(band);
-
-  const bottomRim = new THREE.Mesh(new THREE.TorusGeometry(0.135, 0.016, 10, 28), goldMat);
-  bottomRim.rotation.x = Math.PI / 2;
-  bottomRim.position.y = -0.08;
-  g.add(bottomRim);
-
-  for (let i = 0; i < 6; i++) {
-    const a = (i * Math.PI * 2) / 6;
-    const spike = new THREE.Mesh(new THREE.ConeGeometry(0.045, 0.14, 6), goldMat);
-    spike.position.set(Math.cos(a) * 0.14, 0.06, Math.sin(a) * 0.14);
-    spike.rotation.z = -Math.cos(a) * 0.16;
-    spike.rotation.x = Math.sin(a) * 0.16;
-    spike.castShadow = true;
-    g.add(spike);
-
-    const orb = new THREE.Mesh(new THREE.SphereGeometry(0.024, 12, 12), goldMat);
-    orb.position.set(Math.cos(a) * 0.15, 0.13, Math.sin(a) * 0.15);
-    orb.castShadow = true;
-    g.add(orb);
+  if (artType === "crackers") {
+    [
+      [-26, 8, -0.22],
+      [18, 12, 0.18],
+      [-4, -14, 0.05],
+    ].forEach(([x, y, r]) => {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(r);
+      ctx.fillStyle = "#f59e0b";
+      ctx.strokeStyle = "#b45309";
+      ctx.lineWidth = 3;
+      ctx.fillRect(-26, -24, 52, 48);
+      ctx.strokeRect(-26, -24, 52, 48);
+      ctx.fillStyle = "#92400e";
+      for (let dx = -12; dx <= 12; dx += 12) {
+        for (let dy = -10; dy <= 10; dy += 10) {
+          ctx.beginPath();
+          ctx.arc(dx, dy, 2.3, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      ctx.restore();
+    });
+  } else if (artType === "cookies") {
+    [
+      [-22, 10],
+      [22, 12],
+      [0, -14],
+    ].forEach(([x, y]) => {
+      ctx.fillStyle = "#d97706";
+      ctx.strokeStyle = "#92400e";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(x, y, 24, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = "#3b1d0c";
+      [
+        [-9, -6],
+        [7, -9],
+        [10, 6],
+        [-6, 10],
+        [0, 1],
+      ].forEach(([cx2, cy2]) => {
+        ctx.beginPath();
+        ctx.arc(x + cx2, y + cy2, 4.2, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    });
+  } else if (artType === "chips") {
+    [
+      [-24, 6, -0.35],
+      [22, 8, 0.3],
+      [0, -10, 0.08],
+    ].forEach(([x, y, r]) => {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(r);
+      ctx.fillStyle = "#fde047";
+      ctx.strokeStyle = "#ca8a04";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 30, 19, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.strokeStyle = "#eab308";
+      ctx.lineWidth = 2.5;
+      for (let ry = -9; ry <= 9; ry += 6) {
+        ctx.beginPath();
+        ctx.moveTo(-20, ry);
+        ctx.lineTo(20, ry);
+        ctx.stroke();
+      }
+      ctx.restore();
+    });
+  } else if (artType === "wafers") {
+    [
+      [-16, 10, -0.18],
+      [16, -6, 0.22],
+    ].forEach(([x, y, r]) => {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(r);
+      ctx.fillStyle = "#fde68a";
+      ctx.fillRect(-34, -18, 68, 36);
+      ctx.fillStyle = "#fb7185";
+      ctx.fillRect(-34, -7, 68, 6);
+      ctx.fillRect(-34, 4, 68, 6);
+      ctx.strokeStyle = "#b45309";
+      ctx.lineWidth = 2.5;
+      ctx.strokeRect(-34, -18, 68, 36);
+      ctx.restore();
+    });
+  } else if (artType === "rolls") {
+    [-18, 0, 18].forEach((offset, idx) => {
+      ctx.save();
+      ctx.translate(offset, idx * 6 - 6);
+      ctx.rotate(-0.45);
+      ctx.fillStyle = "#d9f99d";
+      ctx.strokeStyle = "#15803d";
+      ctx.lineWidth = 3;
+      ctx.fillRect(-34, -9, 68, 18);
+      ctx.strokeRect(-34, -9, 68, 18);
+      ctx.fillStyle = "#166534";
+      ctx.beginPath();
+      ctx.ellipse(34, 0, 5, 9, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    });
+  } else if (artType === "mix") {
+    const pts: Array<[number, number, string]> = [
+      [-28, 10, "#facc15"],
+      [24, 12, "#fb923c"],
+      [0, -14, "#fef08a"],
+      [-12, -4, "#f97316"],
+      [14, -8, "#fde047"],
+    ];
+    pts.forEach(([x, y, col]) => {
+      ctx.strokeStyle = col;
+      ctx.lineWidth = 8;
+      ctx.beginPath();
+      ctx.arc(x, y, 13, 0, Math.PI * 2);
+      ctx.stroke();
+    });
+  } else if (artType === "pretzels") {
+    [
+      [-20, 6, -0.15],
+      [20, -4, 0.2],
+    ].forEach(([x, y, r]) => {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(r);
+      ctx.strokeStyle = "#b45309";
+      ctx.lineWidth = 9;
+      ctx.beginPath();
+      ctx.arc(-10, -4, 13, 0, Math.PI * 2);
+      ctx.arc(10, -4, 13, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.fillStyle = "#ffffff";
+      [
+        [-14, -12],
+        [12, -10],
+        [0, 6],
+        [-8, 4],
+        [10, 4],
+      ].forEach(([sx, sy]) => {
+        ctx.fillRect(sx, sy, 3.5, 3.5);
+      });
+      ctx.restore();
+    });
+  } else if (artType === "gold") {
+    ctx.fillStyle = "#fffbeb";
+    ctx.strokeStyle = "#f59e0b";
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    for (let i = 0; i < 10; i++) {
+      const rad = i % 2 === 0 ? 38 : 16;
+      const a = (i * Math.PI) / 5 - Math.PI / 2;
+      if (i === 0) ctx.moveTo(Math.cos(a) * rad, Math.sin(a) * rad);
+      else ctx.lineTo(Math.cos(a) * rad, Math.sin(a) * rad);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
   }
-  return g;
+  ctx.restore();
 }
 
-// Also include cute plushies for variety in the pit
-export function buildShibaMesh(variant: number = 0) {
-  const coatMat = makePlushMat(0xe69138);
-  const creamMat = makePlushMat(0xfff3d6);
-  const collarMat = new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.4 });
+export function createSnackBoxMaterials(spec: FlavorSpec): THREE.MeshPhysicalMaterial[] {
+  const makeFrontFace = (isBack = false) => {
+    const w = 256;
+    const h = 320;
+    const c = document.createElement("canvas");
+    c.width = w;
+    c.height = h;
+    const ctx = c.getContext("2d")!;
 
-  const g = new THREE.Group();
-  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.115, 0.10, 12, 18), coatMat);
-  body.castShadow = true;
-  g.add(body);
+    const g = ctx.createLinearGradient(0, 0, w, h);
+    g.addColorStop(0, spec.primary);
+    g.addColorStop(1, spec.foil ? "#92400e" : spec.primary);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, w, h);
 
-  const mask = new THREE.Mesh(new THREE.SphereGeometry(0.102, 16, 14), creamMat);
-  mask.scale.set(1.02, 0.92, 0.65);
-  mask.position.set(0, 0.01, 0.065);
-  g.add(mask);
+    ctx.save();
+    ctx.translate(w / 2, h * 0.58);
+    ctx.fillStyle = "rgba(255,255,255,0.12)";
+    for (let i = 0; i < 12; i++) {
+      ctx.rotate(Math.PI / 6);
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(-18, -190);
+      ctx.lineTo(18, -190);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
 
-  [-1, 1].forEach((s) => {
-    const ear = new THREE.Mesh(new THREE.ConeGeometry(0.042, 0.085, 8), coatMat);
-    ear.position.set(s * 0.072, 0.145, 0.01);
-    ear.rotation.z = -s * 0.28;
-    g.add(ear);
+    ctx.strokeStyle = "rgba(255,255,255,0.28)";
+    ctx.lineWidth = 5;
+    ctx.strokeRect(10, 10, w - 20, h - 20);
 
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.015, 10, 10), glossyBlackMat);
-    eye.position.set(s * 0.046, 0.065, 0.108);
-    g.add(eye);
+    ctx.fillStyle = spec.secondary;
+    ctx.fillRect(14, 22, w - 28, 66);
+    ctx.strokeStyle = "rgba(0,0,0,0.22)";
+    ctx.lineWidth = 3;
+    ctx.strokeRect(14, 22, w - 28, 66);
 
-    const paw = new THREE.Mesh(new THREE.SphereGeometry(0.032, 10, 10), creamMat);
-    paw.position.set(s * 0.068, -0.11, 0.08);
-    g.add(paw);
-  });
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.font = '900 28px "Inter", "Arial Black", sans-serif';
+    ctx.fillStyle = "#0f172a";
+    ctx.fillText(spec.name, w / 2 + 2, 57);
+    ctx.fillStyle = spec.foil
+      ? "#78350f"
+      : spec.secondary === "#fff1f2" || spec.secondary === "#fef9c3"
+      ? spec.primary
+      : "#ffffff";
+    ctx.fillText(spec.name, w / 2, 55);
 
-  const nose = new THREE.Mesh(new THREE.SphereGeometry(0.015, 10, 10), glossyBlackMat);
-  nose.position.set(0, 0.045, 0.128);
-  g.add(nose);
+    if (!isBack) {
+      ctx.fillStyle = "#0f172a";
+      ctx.beginPath();
+      ctx.roundRect(w - 102, 98, 86, 26, 13);
+      ctx.fill();
+      ctx.fillStyle = "#fde047";
+      ctx.font = '900 13px "Inter", sans-serif';
+      ctx.fillText(spec.badge, w - 59, 112);
 
-  const collar = new THREE.Mesh(new THREE.TorusGeometry(0.112, 0.014, 10, 22), collarMat);
-  collar.rotation.x = Math.PI / 2;
-  collar.position.y = -0.025;
-  g.add(collar);
+      ctx.fillStyle = "rgba(255,255,255,0.9)";
+      ctx.beginPath();
+      ctx.ellipse(w / 2, 198, 92, 66, 0, 0, Math.PI * 2);
+      ctx.fill();
+      drawSnackIllustration(ctx, spec.artType, w / 2, 198, 1.05);
 
-  const bell = new THREE.Mesh(
-    new THREE.SphereGeometry(0.022, 12, 12),
-    new THREE.MeshStandardMaterial({ color: 0xfbbf24, metalness: 0.9, roughness: 0.18 })
-  );
-  bell.position.set(0, -0.04, 0.12);
-  g.add(bell);
+      ctx.fillStyle = "rgba(0,0,0,0.34)";
+      ctx.fillRect(14, 276, w - 28, 28);
+      ctx.fillStyle = "#ffffff";
+      ctx.font = '700 14px "Inter", sans-serif';
+      ctx.fillText(spec.subtitle.toUpperCase(), w / 2, 291);
+    } else {
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(26, 108, 128, 184);
+      ctx.fillStyle = "#0f172a";
+      ctx.textAlign = "left";
+      ctx.font = "900 14px sans-serif";
+      ctx.fillText("NUTRITION", 34, 126);
+      ctx.fillRect(34, 134, 112, 4);
+      ctx.font = "700 11px monospace";
+      [
+        "CALORIES   150",
+        "CRUNCH    100%",
+        "FLAVOR    MAX!",
+        "SUGAR      8g",
+        "SODIUM   180mg",
+        "FUN       999%",
+      ].forEach((line, idx) => {
+        ctx.fillText(line, 34, 154 + idx * 21);
+        ctx.fillStyle = "rgba(0,0,0,0.18)";
+        ctx.fillRect(34, 160 + idx * 21, 112, 1);
+        ctx.fillStyle = "#0f172a";
+      });
 
-  return g;
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(166, 206, 66, 86);
+      ctx.fillStyle = "#0f172a";
+      for (let bx = 172; bx < 226; bx += 4) {
+        const bw = (bx * 7) % 3 === 0 ? 2.5 : 1.3;
+        ctx.fillRect(bx, 214, bw, 58);
+      }
+      ctx.font = "700 10px monospace";
+      ctx.fillText("8 90123", 173, 284);
+
+      drawSnackIllustration(ctx, spec.artType, 198, 152, 0.5);
+    }
+
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
+  };
+
+  const makeSideFace = () => {
+    const w = 128;
+    const h = 256;
+    const c = document.createElement("canvas");
+    c.width = w;
+    c.height = h;
+    const ctx = c.getContext("2d")!;
+    ctx.fillStyle = spec.primary;
+    ctx.fillRect(0, 0, w, h);
+
+    ctx.fillStyle = spec.secondary;
+    ctx.fillRect(12, 12, w - 24, 34);
+    ctx.fillRect(12, h - 46, w - 24, 34);
+
+    ctx.save();
+    ctx.translate(w / 2, h / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.fillStyle = "#ffffff";
+    ctx.font = '900 22px "Inter", sans-serif';
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(spec.name, 0, 0);
+    ctx.restore();
+
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
+  };
+
+  const frontTex = makeFrontFace(false);
+  const backTex = makeFrontFace(true);
+  const sideTex = makeSideFace();
+
+  const matProps = spec.foil
+    ? {
+        metalness: 0.72,
+        roughness: 0.22,
+        clearcoat: 0.85,
+        clearcoatRoughness: 0.14,
+      }
+    : {
+        metalness: 0.04,
+        roughness: 0.42,
+        clearcoat: 0.24,
+        clearcoatRoughness: 0.35,
+      };
+
+  const sideMat = new THREE.MeshPhysicalMaterial({ map: sideTex, ...matProps });
+  const frontMat = new THREE.MeshPhysicalMaterial({ map: frontTex, ...matProps });
+  const backMat = new THREE.MeshPhysicalMaterial({ map: backTex, ...matProps });
+
+  return [sideMat, sideMat, frontMat, backMat, frontMat, sideMat];
 }
 
-export interface PrizeBody {
+export interface SnackBoxBody {
+  uid: number;
   slotId: number;
   tier: number;
+  flavorId: string;
+  spec: FlavorSpec;
   name: string;
   symbol: string;
   icon: string;
+  mesh: THREE.Mesh;
+  hx: number;
+  hy: number;
+  hz: number;
   radius: number;
-  mass: number;
-  gripFactor: number;
-  mesh: THREE.Group;
   pos: THREE.Vector3;
   vel: THREE.Vector3;
-  angVel: THREE.Vector3;
   quat: THREE.Quaternion;
-  won: boolean;
+  angVel: THREE.Vector3;
+  mass: number;
   grabbed: boolean;
-}
-
-/**
- * Creates a prize mesh based on tier and slot ID.
- */
-export function createPrizeBody(
-  slotId: number,
-  tier: number,
-  xNorm: number,
-  zNorm: number,
-  meta?: { name?: string; symbol?: string; image?: string }
-): PrizeBody {
-  let mesh: THREE.Group;
-  let radius = 0.165;
-  let mass = 1.0;
-  let gripFactor = 1.0;
-  let name = "Prize Capsule";
-  let symbol = "SOL";
-  let icon = "🎁";
-
-  if (tier === 0) {
-    if (slotId % 2 === 0) {
-      mesh = buildCyanOrbMesh(slotId);
-      name = "BONK Neon Orb";
-      symbol = "BONK";
-      icon = "🐶";
-      radius = 0.155;
-      gripFactor = 1.05;
-    } else {
-      mesh = buildShibaMesh(slotId);
-      name = "WIF Shiba Plush";
-      symbol = "WIF";
-      icon = "🐕";
-      radius = 0.175;
-      gripFactor = 1.04;
-    }
-  } else if (tier === 1) {
-    mesh = buildPurpleCapsuleMesh(slotId);
-    name = "JUP Star Capsule";
-    symbol = "JUP";
-    icon = "🪐";
-    radius = 0.165;
-    mass = 1.15;
-    gripFactor = 0.95;
-  } else if (tier === 2) {
-    mesh = buildPrismCubeMesh(slotId);
-    name = "Holo NFT Prism";
-    symbol = "SOL";
-    icon = "💎";
-    radius = 0.175;
-    mass = 1.35;
-    gripFactor = 0.88;
-  } else {
-    mesh = buildGoldCrownMesh();
-    name = "Solana Gold Crown";
-    symbol = "CROWN";
-    icon = "👑";
-    radius = 0.18;
-    mass = 1.65;
-    gripFactor = 0.82;
-  }
-
-  // Convert on-chain [0, 1000] coordinates to 3D world space inside cabinet
-  // Cabinet playfield: X in [-0.80, 0.82], Z in [-0.72, 0.68], floor is ~0.16
-  const worldX = (xNorm / 1000) * 1.62 - 0.81;
-  const worldZ = (zNorm / 1000) * 1.40 - 0.70;
-  // Natural height variation based on slotId so prizes settle naturally without z-fighting
-  const worldY = 0.16 + ((slotId * 7) % 5) * 0.008;
-
-  mesh.position.set(worldX, worldY, worldZ);
-  mesh.rotation.y = (slotId * 0.94) + 0.35;
-
-  const displayName = meta?.name || name;
-  const displaySymbol = meta?.symbol || symbol;
-
-  // Floating holographic badge above capsule so players can see which token/NFT is inside
-  if (typeof document !== "undefined") {
-    const tierHex = ["#22d3ee", "#c084fc", "#f472b6", "#fbbf24"][tier] || "#22d3ee";
-    const canvas = document.createElement("canvas");
-    canvas.width = 256;
-    canvas.height = 72;
-    const ctx = canvas.getContext("2d");
-    if (ctx) {
-      ctx.fillStyle = "rgba(7, 10, 22, 0.88)";
-      ctx.strokeStyle = tierHex;
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.roundRect(4, 4, 248, 64, 16);
-      ctx.fill();
-      ctx.stroke();
-
-      ctx.fillStyle = "#ffffff";
-      ctx.font = "bold 22px monospace";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      const label = displayName.length > 16 ? `${displayName.slice(0, 15)}…` : displayName;
-      ctx.fillText(label, 128, 28);
-
-      ctx.fillStyle = tierHex;
-      ctx.font = "bold 16px monospace";
-      ctx.fillText(`#${slotId} • ${displaySymbol}`, 128, 52);
-
-      const tex = new THREE.CanvasTexture(canvas);
-      const spriteMat = new THREE.SpriteMaterial({
-        map: tex,
-        transparent: true,
-        depthWrite: false,
-      });
-      const sprite = new THREE.Sprite(spriteMat);
-      sprite.position.set(0, radius + 0.16, 0);
-      sprite.scale.set(0.42, 0.12, 1);
-      mesh.add(sprite);
-    }
-  }
-
-  return {
-    slotId,
-    tier,
-    name: displayName,
-    symbol: displaySymbol,
-    icon,
-    radius,
-    mass,
-    gripFactor,
-    mesh,
-    pos: mesh.position.clone(),
-    vel: new THREE.Vector3(),
-    angVel: new THREE.Vector3(),
-    quat: mesh.quaternion.clone(),
-    won: false,
-    grabbed: false,
-  };
+  won: boolean;
+  winEmitted: boolean;
+  removeTimer: number;
 }

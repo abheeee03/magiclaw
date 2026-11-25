@@ -1,8 +1,8 @@
-@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800;900&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@700;800;900&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap');
 @import "tailwindcss";
 
 :root {
-  --background: #070812;
+  --background: #060710;
   --foreground: #f8fafc;
 }
 
@@ -20,19 +20,38 @@ body {
   font-family: 'Orbitron', sans-serif;
 }
 
-/* Glassmorphic arcade HUD panels */
+/* Ultra-sleek dark neon glass HUD panels */
 .hud-glass {
-  background: rgba(11, 15, 28, 0.78);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  background: rgba(10, 13, 26, 0.72);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+/* Smooth cinematic HUD fade/slide during dark-to-lit boot sequence */
+.hud-header-anim,
+.hud-footer-anim {
+  transition: opacity 0.8s cubic-bezier(0.22, 1, 0.36, 1), transform 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.hud-header-anim.hud-boot-hidden {
+  opacity: 0;
+  transform: translateY(-22px);
+  pointer-events: none !important;
+}
+.hud-footer-anim.hud-boot-hidden {
+  opacity: 0;
+  transform: translateY(26px);
+  pointer-events: none !important;
+}
+.hud-boot-hidden * {
+  pointer-events: none !important;
 }
 
 /* Camera & utility pill buttons */
 .cam-pill {
   transition: all 0.18s cubic-bezier(0.22, 1, 0.36, 1);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.09);
   background: rgba(255, 255, 255, 0.04);
 }
 .cam-pill:hover {
@@ -40,39 +59,124 @@ body {
   transform: translateY(-1px);
 }
 .cam-pill.active {
-  background: linear-gradient(135deg, #06b6d4, #3b82f6);
-  border-color: rgba(103, 232, 249, 0.7);
+  background: linear-gradient(135deg, #ec4899, #f97316);
+  border-color: rgba(251, 146, 60, 0.8);
   color: #ffffff;
-  box-shadow: 0 0 18px rgba(6, 182, 212, 0.45);
+  box-shadow: 0 0 18px rgba(236, 72, 153, 0.45);
 }
 
-/* Tactile Arcade DROP button */
-.arcade-drop-btn {
+/* Virtual Gold-Medallion Joystick mirroring the physical 3D joystick */
+.joy-base {
   position: relative;
-  background: radial-gradient(circle at 35% 28%, #ff6b81 0%, #ef233c 48%, #a4133c 100%);
-  border: 3px solid #cbd5e1;
-  box-shadow:
-    0 7px 0 #590d22,
-    0 12px 24px rgba(239, 35, 60, 0.48),
-    inset 0 3px 6px rgba(255, 255, 255, 0.45);
-  transition: transform 0.08s ease, box-shadow 0.08s ease, filter 0.15s ease;
+  width: 106px;
+  height: 106px;
+  border-radius: 9999px;
+  background: radial-gradient(circle at 50% 50%, rgba(21, 26, 46, 0.94), rgba(8, 11, 22, 0.98));
+  border: 2px solid rgba(251, 191, 36, 0.32);
+  box-shadow: inset 0 6px 14px rgba(0, 0, 0, 0.72), 0 8px 22px rgba(0, 0, 0, 0.5);
+  touch-action: none;
 }
-.arcade-drop-btn:hover:not(:disabled) {
+.joy-knob {
+  position: absolute;
+  width: 46px;
+  height: 46px;
+  left: 50%;
+  top: 50%;
+  margin-left: -23px;
+  margin-top: -23px;
+  border-radius: 9999px;
+  background: radial-gradient(circle at 32% 28%, #fef08a 0%, #eab308 42%, #a16207 85%, #713f12 100%);
+  border: 2px solid #fde047;
+  box-shadow:
+    0 6px 12px rgba(0, 0, 0, 0.65),
+    0 0 16px rgba(234, 179, 8, 0.45),
+    inset 0 2px 4px rgba(255, 255, 255, 0.65);
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(113, 63, 18, 0.75);
+  font-weight: 900;
+  font-size: 13px;
+}
+.joy-arrow {
+  position: absolute;
+  color: rgba(148, 163, 184, 0.48);
+  font-size: 10px;
+  font-weight: 800;
+  pointer-events: none;
+}
+
+/* Iconic Glowing Emerald-Green Gold-Capped Arcade DROP Button */
+.emerald-drop-btn {
+  position: relative;
+  width: 88px;
+  height: 88px;
+  border-radius: 9999px;
+  background: radial-gradient(circle at 50% 45%, #a7f3d0 0%, #34d399 42%, #10b981 74%, #047857 100%);
+  border: 3px solid #6ee7b7;
+  box-shadow:
+    0 6px 0 #064e3b,
+    0 0 28px rgba(16, 185, 129, 0.7),
+    0 0 50px rgba(52, 211, 153, 0.35),
+    inset 0 3px 8px rgba(255, 255, 255, 0.65);
+  transition: transform 0.08s ease, box-shadow 0.08s ease, filter 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.emerald-drop-cap {
+  width: 62px;
+  height: 62px;
+  border-radius: 9999px;
+  background: radial-gradient(circle at 35% 28%, #fef08a 0%, #eab308 48%, #a16207 95%);
+  border: 2px solid rgba(254, 240, 138, 0.85);
+  box-shadow: inset 0 2px 5px rgba(255, 255, 255, 0.55), 0 2px 6px rgba(0, 0, 0, 0.45);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #422006;
+}
+.emerald-drop-btn:hover:not(:disabled) {
   filter: brightness(1.08);
 }
-.arcade-drop-btn:active:not(:disabled),
-.arcade-drop-btn.pressed {
-  transform: translateY(5px);
+.emerald-drop-btn:active:not(:disabled),
+.emerald-drop-btn.pressed {
+  transform: translateY(4px);
   box-shadow:
-    0 2px 0 #590d22,
-    0 4px 12px rgba(239, 35, 60, 0.35),
+    0 2px 0 #064e3b,
+    0 0 18px rgba(16, 185, 129, 0.85),
     inset 0 2px 6px rgba(0, 0, 0, 0.35);
 }
-.arcade-drop-btn:disabled {
-  opacity: 0.45;
-  filter: grayscale(0.45);
+.emerald-drop-btn:disabled {
+  opacity: 0.48;
+  filter: saturate(0.4);
   cursor: not-allowed;
 }
+
+@keyframes toastPop {
+  0% { transform: translate(-50%, -16px) scale(0.92); opacity: 0; }
+  100% { transform: translate(-50%, 0) scale(1); opacity: 1; }
+}
+.toast-visible {
+  animation: toastPop 0.28s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes pulseUrgent {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.65); }
+  50% { box-shadow: 0 0 0 8px rgba(249, 115, 22, 0); }
+}
+.timer-urgent {
+  animation: pulseUrgent 0.7s infinite;
+  border-color: rgba(251, 146, 60, 0.9) !important;
+  color: #fdba74 !important;
+}
+
+.rarity-common    { background: rgba(148, 163, 184, 0.18); color: #e2e8f0; border: 1px solid rgba(148, 163, 184, 0.35); }
+.rarity-rare      { background: rgba(236, 72, 153, 0.22);  color: #f9a8d4; border: 1px solid rgba(236, 72, 153, 0.48); }
+.rarity-epic      { background: rgba(52, 211, 153, 0.20);  color: #6ee7b7; border: 1px solid rgba(52, 211, 153, 0.48); }
+.rarity-legendary { background: rgba(251, 191, 36, 0.25);  color: #fde68a; border: 1px solid rgba(251, 191, 36, 0.70); }
 
 /* Custom subtle scrollbar */
 .custom-scroll::-webkit-scrollbar {
@@ -85,4 +189,11 @@ body {
 .custom-scroll::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.18);
   border-radius: 999px;
+}
+
+@media (max-width: 640px) {
+  .joy-base { width: 92px; height: 92px; }
+  .joy-knob { width: 40px; height: 40px; margin-left: -20px; margin-top: -20px; }
+  .emerald-drop-btn { width: 78px; height: 78px; }
+  .emerald-drop-cap { width: 54px; height: 54px; }
 }

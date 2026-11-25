@@ -17,8 +17,12 @@ import { VirtualJoystick } from "../components/hud/VirtualJoystick";
 import { TelemetryHUD } from "../components/hud/TelemetryHUD";
 import { PostWinModal } from "../components/modals/PostWinModal";
 import { VaultOddsModal } from "../components/modals/VaultOddsModal";
+import { LoadingScreen } from "../components/LoadingScreen";
 import { arcadeAudio } from "../components/audio/ArcadeAudio";
-import type { OnchainVrfResult } from "../components/three/ClawMachineView";
+import type {
+  CamMode,
+  OnchainVrfResult,
+} from "../components/three/ClawMachineView";
 import {
   fetchMachineConfig,
   fetchPlayerSession,
@@ -64,7 +68,10 @@ const ClawMachineView = dynamic(
     import("../components/three/ClawMachineView").then(
       (mod) => mod.ClawMachineView
     ),
-  { ssr: false }
+  {
+    ssr: false,
+    loading: () => <LoadingScreen progress={22} />,
+  }
 );
 
 export default function ClawVaultPage() {
@@ -77,10 +84,31 @@ export default function ClawVaultPage() {
   const [walletUsdcBalance, setWalletUsdcBalance] = useState<number>(0);
 
   const [isMuted, setIsMuted] = useState(false);
-  const [activeCamMode, setActiveCamMode] = useState<"front" | "side" | "iso" | "orbit">("front");
+  const [activeCamMode, setActiveCamMode] = useState<CamMode>("hero");
   const [virtualJoyVector, setVirtualJoyVector] = useState({ x: 0, y: 0 });
   const [isDropRequested, setIsDropRequested] = useState(false);
   const [gameStateText, setGameStateText] = useState("CONNECT WALLET");
+  const [isBootHudHidden, setIsBootHudHidden] = useState(true);
+  const [powerReplayCount, setPowerReplayCount] = useState(0);
+  const [coinInsertCount, setCoinInsertCount] = useState(0);
+  const [isSceneReady, setIsSceneReady] = useState(false);
+  const [isLoaderDone, setIsLoaderDone] = useState(false);
+  const [loaderProgress, setLoaderProgress] = useState(22);
+
+  useEffect(() => {
+    if (isSceneReady) {
+      const t1 = setTimeout(() => setLoaderProgress(100), 0);
+      const t2 = setTimeout(() => setIsLoaderDone(true), 520);
+      return () => {
+        clearTimeout(t1);
+        clearTimeout(t2);
+      };
+    }
+    const interval = setInterval(() => {
+      setLoaderProgress((prev) => (prev < 88 ? prev + (90 - prev) * 0.14 : prev));
+    }, 120);
+    return () => clearInterval(interval);
+  }, [isSceneReady]);
 
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
@@ -231,6 +259,7 @@ export default function ClawVaultPage() {
 
     setFaucetLoading(true);
     arcadeAudio.playCoin();
+    setCoinInsertCount((c) => c + 1);
 
     try {
       // If session is already delegated (e.g., at $0 balance), undelegate to L1 first so we can top up
@@ -510,6 +539,7 @@ export default function ClawVaultPage() {
       return;
     }
     arcadeAudio.playCoin();
+    setCoinInsertCount((c) => c + 1);
     setFaucetLoading(true);
     try {
       showToast("🚰", "REQUESTING DEVNET SOL", "Airdropping 1 SOL for gas/rent...");
@@ -768,8 +798,16 @@ export default function ClawVaultPage() {
     setIsDropRequested(true);
   };
 
+  const handleSceneReady = useCallback(() => {
+    setIsSceneReady(true);
+  }, []);
+
   return (
-    <main className="relative w-screen h-screen overflow-hidden bg-[#070812] flex flex-col justify-between">
+    <main className="relative w-screen h-screen overflow-hidden bg-[#060710] flex flex-col justify-between">
+      {!isLoaderDone && (
+        <LoadingScreen progress={loaderProgress} fadingOut={isSceneReady} />
+      )}
+
       {/* 3D WebGL Canvas Layer */}
       <div className="absolute inset-0 z-0">
         <ClawMachineView
@@ -786,17 +824,26 @@ export default function ClawVaultPage() {
           virtualJoyVector={virtualJoyVector}
           isDropRequested={isDropRequested}
           gameStateText={gameStateText}
+          powerReplayCount={powerReplayCount}
+          coinInsertCount={coinInsertCount}
+          isLoaderVisible={!isLoaderDone}
+          onSceneReady={handleSceneReady}
+          onBootStateChange={(hudHidden) => setIsBootHudHidden(hudHidden)}
         />
       </div>
 
       {/* Top Floating Arcade Header */}
-      <header className="relative z-20 p-2.5 sm:p-4 flex flex-wrap items-center justify-between gap-2 pointer-events-none">
+      <header
+        className={`hud-header-anim ${
+          isBootHudHidden ? "hud-boot-hidden" : ""
+        } relative z-20 p-2.5 sm:p-4 flex flex-wrap items-center justify-between gap-2 pointer-events-none`}
+      >
         <div className="hud-glass rounded-2xl px-3 py-2 sm:px-4 sm:py-2.5 flex flex-wrap items-center gap-2.5 sm:gap-3.5 pointer-events-auto shadow-2xl">
           <div className="flex flex-col leading-none pr-2 border-r border-white/10">
-            <span className="font-arcade text-sm sm:text-base font-black tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 via-pink-400 to-amber-300">
-              CLAWVAULT
+            <span className="font-arcade text-sm sm:text-base font-black tracking-[0.14em] text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-orange-300 to-pink-400">
+              MAGICLAW
             </span>
-            <span className="text-[9px] text-cyan-400 font-mono tracking-widest mt-0.5">
+            <span className="text-[9px] text-pink-300/80 font-mono font-bold tracking-[0.18em] mt-0.5">
               {isOnchainActive ? "LIVE DEVNET ER" : "WALLET REQUIRED"}
             </span>
           </div>
@@ -881,7 +928,7 @@ export default function ClawVaultPage() {
         {/* Right Controls Cluster */}
         <div className="flex flex-wrap items-center justify-end gap-2 pointer-events-auto">
           <div className="hud-glass rounded-2xl p-1 flex items-center gap-1">
-            {(["front", "side", "iso", "orbit"] as const).map((mode, idx) => (
+            {(["hero", "front", "side", "orbit"] as const).map((mode, idx) => (
               <button
                 key={mode}
                 onClick={() => setActiveCamMode(mode)}
@@ -889,22 +936,34 @@ export default function ClawVaultPage() {
                   activeCamMode === mode ? "active" : "text-slate-300"
                 }`}
               >
-                {idx + 1} {mode === "iso" ? "Angle" : mode.charAt(0).toUpperCase() + mode.slice(1)}
+                {idx + 1} {mode.charAt(0).toUpperCase() + mode.slice(1)}
               </button>
             ))}
           </div>
 
           <button
             onClick={() => setIsOddsModalOpen(true)}
-            className="hud-glass rounded-2xl px-3 py-2 text-xs font-arcade font-bold text-cyan-300 hover:text-white cursor-pointer flex items-center gap-1.5 shadow-lg hover:border-cyan-400/40"
+            className="hud-glass rounded-2xl px-3 py-2 text-xs font-arcade font-bold text-amber-200 hover:text-white cursor-pointer flex items-center gap-1.5 shadow-lg hover:border-pink-400/40"
           >
-            <Shield className="w-3.5 h-3.5 text-cyan-400" />
+            <Shield className="w-3.5 h-3.5 text-pink-400" />
             <span className="hidden sm:inline">
               PRIZES ({machineConfig ? machineConfig.slots.filter((s) => s.inStock).length : 0}) &amp; ODDS
             </span>
             <span className="sm:hidden">
               PRIZES ({machineConfig ? machineConfig.slots.filter((s) => s.inStock).length : 0})
             </span>
+          </button>
+
+          <button
+            onClick={() => {
+              arcadeAudio.init();
+              setPowerReplayCount((c) => c + 1);
+            }}
+            title="Replay Lights Power-On Intro (Key: P)"
+            className="cam-pill hud-glass rounded-2xl px-2.5 py-2 text-[11px] font-bold cursor-pointer flex items-center gap-1 text-amber-200 hover:text-amber-100"
+          >
+            <span>⚡</span>
+            <span className="hidden sm:inline">Power On</span>
           </button>
 
           <div className="wallet-adapter-wrapper min-w-[130px] flex justify-end">
@@ -947,7 +1006,7 @@ export default function ClawVaultPage() {
       )}
 
       {/* Onboarding Gate Banner when wallet not connected or session not active */}
-      {!canPlayTurn && (
+      {!isBootHudHidden && !canPlayTurn && (
         <div className="relative z-20 mx-auto pointer-events-auto">
           <div className="hud-glass rounded-2xl px-4 py-2.5 border border-amber-500/40 text-xs font-mono text-amber-200 flex items-center gap-2.5 shadow-xl">
             <span>
@@ -962,9 +1021,13 @@ export default function ClawVaultPage() {
       )}
 
       {/* Bottom Floating Thumb Control Deck */}
-      <footer className="relative z-20 p-3 sm:p-5 flex flex-col gap-2.5 pointer-events-none">
+      <footer
+        className={`hud-footer-anim ${
+          isBootHudHidden ? "hud-boot-hidden" : ""
+        } relative z-20 p-3 sm:p-5 flex flex-col gap-2.5 pointer-events-none`}
+      >
         <div className="flex items-end justify-between sm:justify-center sm:gap-10">
-          <div className="hud-glass rounded-3xl p-2.5 sm:p-3 flex items-center gap-4 pointer-events-auto shadow-2xl">
+          <div className="hud-glass rounded-3xl p-2 sm:p-2.5 flex items-center gap-3.5 pointer-events-auto shadow-2xl">
             <VirtualJoystick
               onMove={setVirtualJoyVector}
               disabled={
@@ -976,40 +1039,48 @@ export default function ClawVaultPage() {
               }
             />
 
-            <div className="hidden sm:flex flex-col gap-1 min-w-[170px]">
-              <div className="flex items-center gap-1.5">
+            <div className="hidden sm:flex flex-col gap-1 pr-2 min-w-[165px]">
+              <div className="flex items-center gap-2">
                 <span
-                  className={`w-2 h-2 rounded-full ${
-                    canPlayTurn ? "bg-emerald-400 animate-pulse" : "bg-amber-400"
+                  className={`w-2.5 h-2.5 rounded-full ${
+                    canPlayTurn
+                      ? "bg-emerald-400 shadow-[0_0_8px_#34d399]"
+                      : "bg-amber-400 shadow-[0_0_8px_#fbbf24]"
                   }`}
                 />
-                <span className="font-arcade text-xs font-bold text-slate-200">
+                <span className="font-arcade text-[11px] font-extrabold tracking-wider text-lime-200">
                   {gameStateText}
                 </span>
               </div>
-              <div className="text-[11px] text-slate-400 font-mono leading-tight">
+              <div className="text-[10px] text-slate-400 leading-relaxed">
                 <div>
-                  <strong className="text-slate-200">WASD / Arrows</strong> Steer
+                  <strong className="text-slate-200">WASD / Arrows</strong> Move Claw
                 </div>
                 <div>
-                  <strong className="text-slate-200">Space / Enter</strong> Drop
+                  <strong className="text-slate-200">Space / Enter</strong> Drop Claw
                 </div>
                 <div>
-                  <strong className="text-slate-200">1-4 Keys</strong> Cameras
+                  <strong className="text-slate-200">1–4</strong> Cam •{" "}
+                  <strong className="text-slate-200">P</strong> Intro
                 </div>
               </div>
             </div>
           </div>
 
-          <div className="hud-glass rounded-3xl p-3 flex flex-col items-center justify-center pointer-events-auto shadow-2xl">
+          <div className="hud-glass rounded-3xl p-2.5 flex items-center justify-center pointer-events-auto shadow-2xl">
             <button
               onClick={triggerDropBtn}
-              className="arcade-drop-btn w-20 h-20 sm:w-24 sm:h-24 rounded-full flex flex-col items-center justify-center cursor-pointer text-white font-arcade font-black tracking-wider text-sm sm:text-base active:scale-95 transition-all"
+              title="Drop Claw (Space / Enter)"
+              className="emerald-drop-btn cursor-pointer"
             >
-              <span>DROP</span>
-              <span className="text-[9px] font-sans font-bold tracking-widest opacity-85 mt-0.5">
-                ${playFeeUsd.toFixed(2)}
-              </span>
+              <div className="emerald-drop-cap">
+                <span className="font-arcade font-black text-xs sm:text-sm tracking-wider leading-none">
+                  DROP
+                </span>
+                <span className="text-[8px] font-extrabold tracking-widest opacity-80 mt-0.5">
+                  ${playFeeUsd.toFixed(2)}
+                </span>
+              </div>
             </button>
           </div>
         </div>
