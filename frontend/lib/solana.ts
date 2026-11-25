@@ -67,12 +67,15 @@ export const erConnection = new Connection(EPHEMERAL_PROVIDER_ENDPOINT, {
 export async function confirmTx(
   connection: Connection,
   signature: string,
-  timeoutMs: number = 45_000
+  timeoutMs: number = 45_000,
+  pollIntervalMs?: number
 ): Promise<void> {
+  const isEr = connection === erConnection;
+  const interval = pollIntervalMs ?? (isEr ? 45 : 500);
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     const res = await connection.getSignatureStatuses([signature], {
-      searchTransactionHistory: true,
+      searchTransactionHistory: !isEr,
     });
     const status = res.value[0];
     if (status) {
@@ -80,13 +83,14 @@ export async function confirmTx(
         throw new Error(`Transaction failed: ${JSON.stringify(status.err)}`);
       }
       if (
+        (isEr && status.confirmationStatus === "processed") ||
         status.confirmationStatus === "confirmed" ||
         status.confirmationStatus === "finalized"
       ) {
         return;
       }
     }
-    await new Promise((r) => setTimeout(r, 600));
+    await new Promise((r) => setTimeout(r, interval));
   }
   throw new Error(`Transaction confirmation timed out for ${signature}`);
 }
@@ -530,7 +534,8 @@ export async function fetchPlayerSession(
 }
 
 /**
- * Polls MagicBlock ER until `PlayerSession.state` leaves `AwaitingVrf`.
+ * Waits for MagicBlock ER VRF callback via WebSocket `onAccountChange` + fast HTTP polling fallback
+ * until `PlayerSession.state` leaves `AwaitingVrf`.
  */
 export async function waitForVrfResolution(
   owner: PublicKey,
@@ -540,20 +545,72 @@ export async function waitForVrfResolution(
 ): Promise<PlayerSessionData | null> {
   const [sessionPda] = getSessionPda(machinePda, owner);
   const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    const info = await erConnection.getAccountInfo(sessionPda);
-    if (info && info.data.length >= 210) {
-      const decoded = decodePlayerSession(info.data, true);
+
+  return new Promise<PlayerSessionData | null>((resolve) => {
+    let settled = false;
+    let subId: number | null = null;
+    let pollTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const finish = (result: PlayerSessionData | null) => {
+      if (settled) return;
+      settled = true;
+      if (pollTimer) clearTimeout(pollTimer);
+      if (subId !== null) {
+        void erConnection.removeAccountChangeListener(subId).catch(() => {});
+      }
+      resolve(result);
+    };
+
+    const tryDecode = (data: Uint8Array): PlayerSessionData | null => {
+      if (data.length < 210) return null;
+      const decoded = decodePlayerSession(data, true);
       if (
         decoded.vrfRequestNonce >= expectedNonce &&
         decoded.state !== "AwaitingVrf"
       ) {
         return decoded;
       }
+      return null;
+    };
+
+    try {
+      subId = erConnection.onAccountChange(
+        sessionPda,
+        (info) => {
+          const decoded = tryDecode(info.data);
+          if (decoded) finish(decoded);
+        },
+        "processed"
+      );
+    } catch {
+      // Fall back cleanly to HTTP polling if WS subscription fails
     }
-    await new Promise((r) => setTimeout(r, 200));
-  }
-  return null;
+
+    const poll = async () => {
+      if (settled) return;
+      try {
+        const info = await erConnection.getAccountInfo(sessionPda, "processed");
+        if (info) {
+          const decoded = tryDecode(info.data);
+          if (decoded) {
+            finish(decoded);
+            return;
+          }
+        }
+      } catch {
+        // Ignore transient RPC poll error and retry until timeout
+      }
+      if (Date.now() - start >= timeoutMs) {
+        finish(null);
+        return;
+      }
+      pollTimer = setTimeout(() => {
+        void poll();
+      }, 40);
+    };
+
+    void poll();
+  });
 }
 
 /**
@@ -598,6 +655,25 @@ export async function waitForSessionUndelegated(
     await new Promise((r) => setTimeout(r, 700));
   }
   return false;
+}
+
+/**
+ * Reads `PlayerLedger.total_withdrawn_usdc` on L1 to detect pending L1 USDC withdrawals.
+ */
+export async function fetchPlayerLedgerTotalWithdrawn(
+  owner: PublicKey,
+  machinePda: PublicKey
+): Promise<bigint> {
+  const [ledgerPda] = getLedgerPda(machinePda, owner);
+  const info = await baseConnection.getAccountInfo(ledgerPda);
+  if (!info || info.data.length < 96) return BigInt(0);
+  // Layout: 8 (disc) + 32 (machine) + 32 (owner) + 8 (total_deposited) + 8 (total_withdrawn)
+  const view = new DataView(
+    info.data.buffer,
+    info.data.byteOffset,
+    info.data.byteLength
+  );
+  return view.getBigUint64(80, true);
 }
 
 /**

@@ -8,7 +8,9 @@ use ephemeral_rollups_sdk::ephem::{
 use crate::constants::*;
 use crate::error::ErrorCode;
 use crate::events::{PrizeClaimRequested, PrizeSoldBack};
-use crate::instructions::common::{verify_owner, verify_player_or_session};
+use crate::instructions::common::{
+    load_session, session_pda, verify_owner, verify_player_or_session,
+};
 use crate::pricing::compute_buyback;
 use crate::state::{LastOutcome, MachineConfig, PlayerSession, SessionState};
 
@@ -160,6 +162,8 @@ pub fn handle_claim_prize(ctx: Context<ClaimPrize>) -> Result<()> {
         );
     }
 
+    ctx.accounts.player_session.exit(&crate::ID)?;
+
     MagicIntentBundleBuilder::new(
         ctx.accounts.signer.to_account_info(),
         ctx.accounts.magic_context.to_account_info(),
@@ -177,12 +181,10 @@ pub struct RequestWithdrawAndUndelegate<'info> {
     #[account(mut)]
     pub owner: Signer<'info>,
 
-    #[account(
-        mut,
-        seeds = [SESSION_SEED, player_session.machine.as_ref(), owner.key().as_ref()],
-        bump = player_session.bump
-    )]
-    pub player_session: Box<Account<'info, PlayerSession>>,
+    /// CHECK: Delegated PlayerSession PDA, validated and serialized manually before `commit_and_undelegate`
+    /// because the MagicBlock ER runtime reassigns ownership during the CPI before Anchor's exit hook runs.
+    #[account(mut)]
+    pub player_session: UncheckedAccount<'info>,
 
     /// CHECK: Machine PDA, forwarded to the L1 withdrawal action.
     pub machine_config: UncheckedAccount<'info>,
@@ -206,24 +208,34 @@ pub fn handle_request_withdraw_and_undelegate(
     ctx: Context<RequestWithdrawAndUndelegate>,
     amount_usdc: u64,
 ) -> Result<()> {
-    verify_owner(&ctx.accounts.owner, &ctx.accounts.player_session)?;
+    let mut session = load_session(&ctx.accounts.player_session.to_account_info())?;
+    require_keys_eq!(
+        session.machine,
+        ctx.accounts.machine_config.key(),
+        ErrorCode::Unauthorized
+    );
+    require_keys_eq!(
+        ctx.accounts.player_session.key(),
+        session_pda(&session.machine, &session.owner).0,
+        ErrorCode::Unauthorized
+    );
+    verify_owner(&ctx.accounts.owner, &session)?;
     require!(
-        ctx.accounts.player_session.state == SessionState::Idle,
+        session.state == SessionState::Idle,
         ErrorCode::InvalidState
     );
 
     let withdraw = if amount_usdc == 0 {
-        ctx.accounts.player_session.usdc_balance
+        session.usdc_balance
     } else {
         require!(
-            amount_usdc <= ctx.accounts.player_session.usdc_balance,
+            amount_usdc <= session.usdc_balance,
             ErrorCode::InsufficientBalance
         );
         amount_usdc
     };
 
     if withdraw > 0 {
-        let session: &mut PlayerSession = &mut ctx.accounts.player_session;
         session.usdc_balance = session
             .usdc_balance
             .checked_sub(withdraw)
@@ -232,6 +244,10 @@ pub fn handle_request_withdraw_and_undelegate(
             .cumulative_withdrawn_usdc
             .checked_add(withdraw)
             .ok_or(ErrorCode::MathOverflow)?;
+
+        let mut data = ctx.accounts.player_session.try_borrow_mut_data()?;
+        let mut dst: &mut [u8] = &mut data[..];
+        session.try_serialize(&mut dst)?;
     }
 
     MagicIntentBundleBuilder::new(

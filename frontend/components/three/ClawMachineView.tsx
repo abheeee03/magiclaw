@@ -3,7 +3,6 @@
 import React, { useEffect, useRef, useCallback } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import { PublicKey } from "@solana/web3.js";
 import { arcadeAudio } from "../audio/ArcadeAudio";
 import {
   DottedPixelMarquee,
@@ -15,14 +14,12 @@ import {
   updateLimeLCD,
 } from "./textures";
 import {
-  FLAVOR_CATALOG,
-  SNACK_MANIFEST,
+  getFlavorSpecForSlot,
   SnackBoxBody,
-  createSnackBoxMaterials,
+  createPrizeBoxMaterials,
 } from "./prizes";
 import { PrizeSlot, WonPrizeInfo } from "../../lib/types";
 import { computeLiveBuyback, getLivePythPrice } from "../../lib/pyth";
-import { getDefaultPrizeSlots } from "../../lib/solana";
 
 export type CamMode = "hero" | "front" | "side" | "orbit";
 
@@ -51,8 +48,10 @@ export interface ClawMachineViewProps {
   powerReplayCount?: number;
   coinInsertCount?: number;
   isLoaderVisible?: boolean;
+  showProjection?: boolean;
   onSceneReady?: () => void;
   onBootStateChange?: (hudHidden: boolean, booting: boolean) => void;
+  onClawStateChange?: (clawState: string) => void;
 }
 
 const CAB = {
@@ -203,13 +202,6 @@ function createRoundedConsoleMesh(w: number, d: number, h: number, r: number) {
   return geo;
 }
 
-const TIER_FLAVORS: Record<number, string[]> = {
-  0: ["cheez", "choco", "honey"],
-  1: ["berry", "matcha", "spicy"],
-  2: ["pretzel"],
-  3: ["gold"],
-};
-
 export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
   slots,
   usdcBalance = "0.00",
@@ -227,8 +219,10 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
   powerReplayCount = 0,
   coinInsertCount = 0,
   isLoaderVisible = false,
+  showProjection = false,
   onSceneReady,
   onBootStateChange,
+  onClawStateChange,
 }) => {
   const mountRef = useRef<HTMLDivElement>(null);
 
@@ -246,8 +240,10 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
     virtualJoyVector,
     gameStateText,
     isLoaderVisible,
+    showProjection,
     onSceneReady,
     onBootStateChange,
+    onClawStateChange,
   });
 
   useEffect(() => {
@@ -265,8 +261,10 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
       virtualJoyVector,
       gameStateText,
       isLoaderVisible,
+      showProjection,
       onSceneReady,
       onBootStateChange,
+      onClawStateChange,
     };
   });
 
@@ -1608,29 +1606,84 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
       linkageStruts.push(strut);
     }
 
+    const projectionGroup = new THREE.Group();
+    projectionGroup.visible = false;
+    cabinetGroup.add(projectionGroup);
+
+    const clawTargetRingMat = new THREE.MeshBasicMaterial({
+      color: 0xff2244,
+      transparent: true,
+      opacity: 0.92,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
     const clawTargetRing = new THREE.Mesh(
-      new THREE.RingGeometry(0.095, 0.118, 28),
-      new THREE.MeshBasicMaterial({
-        color: 0x34d399,
-        transparent: true,
-        opacity: 0.24,
-        side: THREE.DoubleSide,
-      })
+      new THREE.RingGeometry(0.085, 0.12, 36),
+      clawTargetRingMat
     );
     clawTargetRing.rotation.x = -Math.PI / 2;
-    clawTargetRing.position.y = 0.008;
-    cabinetGroup.add(clawTargetRing);
+    projectionGroup.add(clawTargetRing);
+
+    const clawTargetDiscMat = new THREE.MeshBasicMaterial({
+      color: 0xff2244,
+      transparent: true,
+      opacity: 0.22,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+    const clawTargetDisc = new THREE.Mesh(
+      new THREE.CircleGeometry(0.085, 36),
+      clawTargetDiscMat
+    );
+    clawTargetDisc.rotation.x = -Math.PI / 2;
+    projectionGroup.add(clawTargetDisc);
+
+    const clawTargetCenterMat = new THREE.MeshBasicMaterial({
+      color: 0xff5577,
+      transparent: true,
+      opacity: 0.95,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+    const clawTargetCenter = new THREE.Mesh(
+      new THREE.CircleGeometry(0.022, 24),
+      clawTargetCenterMat
+    );
+    clawTargetCenter.rotation.x = -Math.PI / 2;
+    projectionGroup.add(clawTargetCenter);
+
+    const projectionBeamMat = new THREE.MeshBasicMaterial({
+      color: 0xff2244,
+      transparent: true,
+      opacity: 0.28,
+      depthWrite: false,
+    });
+    const projectionBeam = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.005, 0.005, 1, 10),
+      projectionBeamMat
+    );
+    projectionGroup.add(projectionBeam);
 
     /* =========================================================================
-     * 9. SNACK BOX RIGID-BODY PHYSICS ENGINE (36 BOXES STACKED & TUMBLED)
+     * 9. SNACK BOX RIGID-BODY PHYSICS ENGINE (REAL ON-CHAIN PRIZE SLOTS)
      * ========================================================================= */
-    const flavorMatCache: Record<string, THREE.MeshPhysicalMaterial[]> = {};
-    Object.values(FLAVOR_CATALOG).forEach((spec) => {
-      flavorMatCache[spec.id] = createSnackBoxMaterials(spec);
-    });
-
     const boxesGroup = new THREE.Group();
     cabinetGroup.add(boxesGroup);
+
+    const disposePrizeBody = (b: SnackBoxBody) => {
+      boxesGroup.remove(b.mesh);
+      b.mesh.geometry.dispose();
+      if (Array.isArray(b.mesh.material)) {
+        b.mesh.material.forEach((m) => m.dispose());
+      } else if (b.mesh.material) {
+        b.mesh.material.dispose();
+      }
+      if (b.ringMesh) {
+        boxesGroup.remove(b.ringMesh);
+        b.ringMesh.geometry.dispose();
+        (b.ringMesh.material as THREE.Material).dispose();
+      }
+    };
 
     let boxUidCounter = 1;
 
@@ -1755,9 +1808,11 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
 
     const emitWinPrize = (box: SnackBoxBody) => {
       if (box.winEmitted) return;
+      if (!propsRef.current.isOnchainActive) return;
       box.winEmitted = true;
       box.won = true;
       box.removeTimer = 0;
+      if (box.ringMesh) box.ringMesh.visible = false;
       const g = gameRef.current;
       g.wonThisTurn = true;
       g.celebrationTimer = 4.6;
@@ -1865,7 +1920,13 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
               b.vel.z += 2.8 * h;
               b.vel.x *= 0.86;
             }
-            if (!b.won && b.pos.y < -0.28 && !silent) {
+            if (
+              !b.won &&
+              b.pos.y < -0.28 &&
+              !silent &&
+              propsRef.current.isOnchainActive &&
+              propsRef.current.onchainVrfResult?.outcome === "Won"
+            ) {
               emitWinPrize(b);
             }
           }
@@ -1909,6 +1970,17 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
 
           if (b.vel.lengthSq() < 0.00025 && b.pos.y <= _ext.y + 0.012 && !inChute) {
             b.vel.set(0, 0, 0);
+          }
+
+          if (
+            !b.won &&
+            !inChute &&
+            b !== gameRef.current.lastReleasedBox &&
+            b.pos.y <= _ext.y + 0.04
+          ) {
+            const springAlpha = Math.min(1, h * 3.5);
+            b.pos.x += (b.anchorX - b.pos.x) * springAlpha;
+            b.pos.z += (b.anchorZ - b.pos.z) * springAlpha;
           }
         }
 
@@ -1965,115 +2037,98 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
         if (b.won) {
           b.removeTimer += dt;
           if (b.removeTimer > 2.4) {
-            boxesGroup.remove(b.mesh);
-            b.mesh.geometry.dispose();
+            disposePrizeBody(b);
             boxes.splice(i, 1);
             continue;
           }
         }
         b.mesh.position.copy(b.pos);
         b.mesh.quaternion.copy(b.quat);
+        if (b.ringMesh) {
+          b.ringMesh.visible = !b.won && !b.grabbed && !isInsideChuteXZ(b.pos.x, b.pos.z);
+          b.ringMesh.position.set(b.anchorX, 0.005, b.anchorZ);
+        }
       }
     };
 
     const spawnSnackBoxes = (slotList?: PrizeSlot[]) => {
-      boxesRef.current.forEach((b) => {
-        boxesGroup.remove(b.mesh);
-        b.mesh.geometry.dispose();
-      });
+      boxesRef.current.forEach(disposePrizeBody);
       boxesRef.current = [];
 
-      const source =
-        slotList && slotList.length > 0
-          ? slotList.filter((s) => s.inStock)
-          : getDefaultPrizeSlots(PublicKey.default);
-
-      const manifest = [...SNACK_MANIFEST];
-      for (let i = manifest.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [manifest[i], manifest[j]] = [manifest[j], manifest[i]];
+      if (!slotList || slotList.length === 0) {
+        return;
       }
 
-      // Assign each stocked PrizeSlot to a matching-tier box index
-      const slotAssignment = new Map<number, PrizeSlot>();
-      const usedBoxIndices = new Set<number>();
-      source.forEach((slot) => {
-        const preferredFlavors = TIER_FLAVORS[slot.tier] || TIER_FLAVORS[0];
-        let matchIdx = manifest.findIndex(
-          (fId, idx) => !usedBoxIndices.has(idx) && preferredFlavors.includes(fId)
-        );
-        if (matchIdx === -1) {
-          matchIdx = manifest.findIndex((_, idx) => !usedBoxIndices.has(idx));
-        }
-        if (matchIdx !== -1) {
-          usedBoxIndices.add(matchIdx);
-          slotAssignment.set(matchIdx, slot);
-        }
-      });
+      const stockedSlots = slotList.filter((s) => s.inStock && !s.reserved);
+      if (stockedSlots.length === 0) {
+        return;
+      }
 
       const created: SnackBoxBody[] = [];
-      manifest.forEach((flavorId, idx) => {
-        const assignedSlot = slotAssignment.get(idx);
-        // Ensure box visual flavor matches assigned slot tier if available
-        const effectiveFlavorId = assignedSlot
-          ? (TIER_FLAVORS[assignedSlot.tier]?.[
-              assignedSlot.slotId % (TIER_FLAVORS[assignedSlot.tier]?.length || 1)
-            ] ?? flavorId)
-          : flavorId;
-        const spec = FLAVOR_CATALOG[effectiveFlavorId] || FLAVOR_CATALOG[flavorId];
+      stockedSlots.forEach((slot) => {
+        const spec = getFlavorSpecForSlot(slot);
         const [bw, bh, bd] = spec.dims;
         const geo = new THREE.BoxGeometry(bw, bh, bd);
-        const mesh = new THREE.Mesh(geo, flavorMatCache[spec.id]);
+        const mats = createPrizeBoxMaterials(slot, spec);
+        const mesh = new THREE.Mesh(geo, mats);
         mesh.castShadow = true;
         mesh.receiveShadow = true;
         boxesGroup.add(mesh);
 
-        let sx = 0;
-        let sz = 0;
-        if (assignedSlot) {
-          sx = THREE.MathUtils.clamp(
-            (assignedSlot.x / 1000) * (CAB.gantryXMax - CAB.gantryXMin) + CAB.gantryXMin,
-            CAB.xMin + 0.18,
-            CAB.xMax - 0.18
-          );
-          sz = THREE.MathUtils.clamp(
-            (assignedSlot.z / 1000) * (CAB.gantryZMax - CAB.gantryZMin) + CAB.gantryZMin,
-            CAB.zMin + 0.18,
-            CAB.zMax - 0.18
-          );
-          if (sx < CAB.chuteXMax + 0.16 && sz > CAB.chuteZMin - 0.16) {
-            sz = CAB.chuteZMin - 0.18;
-          }
-        } else {
-          for (let tries = 0; tries < 45; tries++) {
-            sx = THREE.MathUtils.lerp(CAB.xMin + 0.18, CAB.xMax - 0.18, Math.random());
-            sz = THREE.MathUtils.lerp(CAB.zMin + 0.18, CAB.zMax - 0.18, Math.random());
-            if (!(sx < CAB.chuteXMax + 0.16 && sz > CAB.chuteZMin - 0.16)) break;
-          }
+        const sx = THREE.MathUtils.clamp(
+          (slot.x / 1000) * (CAB.gantryXMax - CAB.gantryXMin) + CAB.gantryXMin,
+          CAB.xMin + 0.14,
+          CAB.xMax - 0.14
+        );
+        let sz = THREE.MathUtils.clamp(
+          (slot.z / 1000) * (CAB.gantryZMax - CAB.gantryZMin) + CAB.gantryZMin,
+          CAB.zMin + 0.14,
+          CAB.zMax - 0.14
+        );
+        if (sx < CAB.chuteXMax + 0.14 && sz > CAB.chuteZMin - 0.14) {
+          sz = CAB.chuteZMin - 0.16;
         }
-        const sy = 0.14 + Math.floor(idx / 9) * 0.24 + Math.random() * 0.1;
+        const sy = CAB.floorY + bh / 2;
+
+        const ringColor =
+          slot.tier === 3
+            ? 0xfacc15
+            : slot.tier === 2
+            ? 0xa855f7
+            : slot.tier === 1
+            ? 0x38bdf8
+            : 0x34d399;
+        const ringRadius = Math.max(bw, bd) * 0.62;
+        const ringGeo = new THREE.RingGeometry(ringRadius * 0.78, ringRadius, 32);
+        const ringMat = new THREE.MeshBasicMaterial({
+          color: ringColor,
+          transparent: true,
+          opacity: 0.72,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+        });
+        const ringMesh = new THREE.Mesh(ringGeo, ringMat);
+        ringMesh.rotation.x = -Math.PI / 2;
+        ringMesh.position.set(sx, 0.005, sz);
+        boxesGroup.add(ringMesh);
 
         const quat = new THREE.Quaternion().setFromEuler(
-          new THREE.Euler(
-            (Math.random() - 0.5) * 0.85,
-            Math.random() * Math.PI * 2,
-            (Math.random() - 0.5) * 0.85
-          )
+          new THREE.Euler(0, ((slot.slotId % 3) - 1) * 0.14, 0)
         );
-
-        const fallbackSlot = source[idx % Math.max(1, source.length)];
-        const linkedSlot = assignedSlot || fallbackSlot;
 
         const body: SnackBoxBody = {
           uid: boxUidCounter++,
-          slotId: linkedSlot ? linkedSlot.slotId : idx % 16,
-          tier: linkedSlot ? linkedSlot.tier : spec.tier,
+          slotId: slot.slotId,
+          tier: slot.tier,
           flavorId: spec.id,
           spec,
-          name: linkedSlot?.name || spec.name,
-          symbol: linkedSlot?.symbol || "SPL",
-          icon: linkedSlot?.icon || spec.icon,
+          name: slot.name || spec.name,
+          symbol: slot.symbol || "SPL",
+          icon: slot.icon || spec.icon,
           mesh,
+          ringMesh,
+          anchorX: sx,
+          anchorZ: sz,
           hx: bw / 2,
           hy: bh / 2,
           hz: bd / 2,
@@ -2095,15 +2150,6 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
       });
 
       boxesRef.current = created;
-      for (let i = 0; i < 130; i++) {
-        stepPhysics(1 / 60, true);
-      }
-      created.forEach((b) => {
-        b.vel.set(0, 0, 0);
-        b.angVel.set(0, 0, 0);
-        b.mesh.position.copy(b.pos);
-        b.mesh.quaternion.copy(b.quat);
-      });
     };
 
     syncBoxesRef.current = spawnSnackBoxes;
@@ -2565,7 +2611,8 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
         const horizDist = Math.hypot(dx, dz);
         const dy = Math.abs(b.pos.y - grabPocketY);
 
-        if (horizDist < 0.27 && dy < 0.36) {
+        const maxCaptureHoriz = propsRef.current.isOnchainActive ? 0.22 : 0.27;
+        if (horizDist < maxCaptureHoriz && dy < 0.36) {
           const score = horizDist * 1.45 + dy * 0.55 - b.pos.y * 0.25;
           if (score < bestScore) {
             bestScore = score;
@@ -2711,6 +2758,7 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
     let lastTime = performance.now();
     let elapsed = 0;
     let lastLcdUpdate = -1;
+    let lastEmittedClawState = STATE.READY as string;
     let animId = 0;
 
     const animate = (now: number) => {
@@ -2974,8 +3022,8 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
             g.stateTime >= 0.35 &&
             g.lastReleasedBox &&
             !g.lastReleasedBox.winEmitted &&
-            (!propsRef.current.isOnchainActive ||
-              propsRef.current.onchainVrfResult?.outcome === "Won")
+            propsRef.current.isOnchainActive &&
+            propsRef.current.onchainVrfResult?.outcome === "Won"
           ) {
             emitWinPrize(g.lastReleasedBox);
           }
@@ -2995,9 +3043,6 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
             g.lastTickSec = 25;
             g.stateTime = 0;
             g.lastReleasedBox = null;
-            if (boxes.length < 10) {
-              spawnSnackBoxes(propsRef.current.slots);
-            }
           }
         }
       }
@@ -3037,10 +3082,36 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
         linkageStruts[i].rotation.z = 0.42 - g.clawOpen * 0.22;
       }
 
-      clawTargetRing.position.set(g.gantryX, 0.008, g.gantryZ);
-      clawTargetRing.visible =
+      const showProj =
+        Boolean(propsRef.current.showProjection) &&
         !bootSeq.active &&
-        (g.state === STATE.MOVING || g.state === STATE.READY);
+        (g.state === STATE.MOVING ||
+          g.state === STATE.READY ||
+          g.state === STATE.DROPPING);
+      projectionGroup.visible = showProj;
+      if (showProj) {
+        let projY = 0.012;
+        for (let i = 0; i < boxes.length; i++) {
+          const b = boxes[i];
+          if (b.won || b.grabbed || isInsideChuteXZ(b.pos.x, b.pos.z)) continue;
+          if (
+            Math.abs(b.pos.x - g.gantryX) <= b.hx + 0.02 &&
+            Math.abs(b.pos.z - g.gantryZ) <= b.hz + 0.02
+          ) {
+            projY = Math.max(projY, b.pos.y + b.hy + 0.012);
+          }
+        }
+        const pulse = 1 + 0.08 * Math.sin(elapsed * 6.5);
+        clawTargetRing.position.set(g.gantryX, projY, g.gantryZ);
+        clawTargetRing.scale.set(pulse, pulse, 1);
+        clawTargetDisc.position.set(g.gantryX, projY - 0.001, g.gantryZ);
+        clawTargetCenter.position.set(g.gantryX, projY + 0.001, g.gantryZ);
+
+        const beamTopY = Math.max(projY + 0.05, g.clawY - 0.28);
+        const beamH = Math.max(0.02, beamTopY - projY);
+        projectionBeam.scale.set(1, beamH, 1);
+        projectionBeam.position.set(g.gantryX, projY + beamH / 2, g.gantryZ);
+      }
 
       if (g.grabbedBox) {
         clawAssembly.getWorldPosition(_clawWorldPos);
@@ -3084,6 +3155,11 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
         }
       }
 
+      if (g.state !== lastEmittedClawState) {
+        lastEmittedClawState = g.state;
+        propsRef.current.onClawStateChange?.(g.state);
+      }
+
       stepPhysics(dt, false);
       updateConfetti(dt);
 
@@ -3109,6 +3185,8 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
     return () => {
       cancelAnimationFrame(loadFrameId);
       cancelAnimationFrame(animId);
+      boxesRef.current.forEach(disposePrizeBody);
+      boxesRef.current = [];
       controls.removeEventListener("start", handleControlsStart);
       window.removeEventListener("pointerdown", unlockAudioOnce);
       window.removeEventListener("keydown", unlockAudioOnce);

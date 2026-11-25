@@ -189,7 +189,7 @@ export const VaultOddsModal: React.FC<VaultOddsModalProps> = ({
                           <span className="text-slate-400">
                             Instant Buyback:{" "}
                             <strong className="text-amber-300 font-bold">
-                              ${buybackUsd}
+                              {buybackUsd} Tickets
                             </strong>
                           </span>
                           <span className="text-slate-500">

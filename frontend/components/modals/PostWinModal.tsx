@@ -161,7 +161,7 @@ export const PostWinModal: React.FC<PostWinModalProps> = ({
               <span className="text-slate-400">
                 Buyback:{" "}
                 <strong className="text-amber-400 font-bold">
-                  ${prize.sellBackUsdc.toFixed(2)}
+                  {prize.sellBackUsdc.toFixed(2)} Tickets
                 </strong>
               </span>
             </div>
@@ -184,7 +184,7 @@ export const PostWinModal: React.FC<PostWinModalProps> = ({
             </h4>
             <p className="text-xs text-slate-400 mb-4">
               {settledAction === "sold"
-                ? `Credited +$${prize.sellBackUsdc.toFixed(2)} USDC directly to your ER session balance.`
+                ? `Credited +${prize.sellBackUsdc.toFixed(2)} Tickets directly to your session balance.`
                 : `Transferred ${rewardLabel} (${prize.name}) from Vault PDA straight to your Solana Devnet wallet.`}
             </p>
             <button
@@ -207,7 +207,7 @@ export const PostWinModal: React.FC<PostWinModalProps> = ({
                   <span>{isProcessing ? "PROCESSING..." : "INSTANT SELL-BACK"}</span>
                 </div>
                 <span className="text-xs font-mono font-bold bg-slate-950/20 px-2.5 py-1 rounded-xl">
-                  +${prize.sellBackUsdc.toFixed(2)} USDC
+                  +{prize.sellBackUsdc.toFixed(2)} Tickets
                 </span>
               </button>
             )}

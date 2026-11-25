@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import type { PrizeSlot } from "../../lib/types";
 
 export interface FlavorSpec {
   id: string;
@@ -39,7 +40,7 @@ export const FLAVOR_CATALOG: Record<string, FlavorSpec> = {
     primary: "#dc2626",
     secondary: "#facc15",
     accent: "#fef08a",
-    badge: "CHEDDAR",
+    badge: "COMMON",
     artType: "crackers",
     dims: [0.22, 0.14, 0.28],
     mass: 0.95,
@@ -56,7 +57,7 @@ export const FLAVOR_CATALOG: Record<string, FlavorSpec> = {
     primary: "#1d4ed8",
     secondary: "#f59e0b",
     accent: "#fef3c7",
-    badge: "COOKIES",
+    badge: "COMMON",
     artType: "cookies",
     dims: [0.24, 0.15, 0.29],
     mass: 1.0,
@@ -73,7 +74,7 @@ export const FLAVOR_CATALOG: Record<string, FlavorSpec> = {
     primary: "#eab308",
     secondary: "#dc2626",
     accent: "#fffbeb",
-    badge: "HONEY",
+    badge: "COMMON",
     artType: "chips",
     dims: [0.21, 0.16, 0.27],
     mass: 0.9,
@@ -90,7 +91,7 @@ export const FLAVOR_CATALOG: Record<string, FlavorSpec> = {
     primary: "#ec4899",
     secondary: "#fff1f2",
     accent: "#fde047",
-    badge: "BERRY",
+    badge: "RARE",
     artType: "wafers",
     dims: [0.22, 0.145, 0.275],
     mass: 0.95,
@@ -107,7 +108,7 @@ export const FLAVOR_CATALOG: Record<string, FlavorSpec> = {
     primary: "#16a34a",
     secondary: "#fef9c3",
     accent: "#bbf7d0",
-    badge: "MATCHA",
+    badge: "RARE",
     artType: "rolls",
     dims: [0.23, 0.14, 0.28],
     mass: 1.0,
@@ -124,7 +125,7 @@ export const FLAVOR_CATALOG: Record<string, FlavorSpec> = {
     primary: "#ea580c",
     secondary: "#fde047",
     accent: "#7c2d12",
-    badge: "HOT!",
+    badge: "RARE",
     artType: "mix",
     dims: [0.22, 0.155, 0.275],
     mass: 1.05,
@@ -141,7 +142,7 @@ export const FLAVOR_CATALOG: Record<string, FlavorSpec> = {
     primary: "#0284c7",
     secondary: "#facc15",
     accent: "#e0f2fe",
-    badge: "BAKED",
+    badge: "EPIC",
     artType: "pretzels",
     dims: [0.21, 0.16, 0.27],
     mass: 1.08,
@@ -150,15 +151,15 @@ export const FLAVOR_CATALOG: Record<string, FlavorSpec> = {
   gold: {
     id: "gold",
     name: "MAGIC GOLD",
-    subtitle: "Mystery Foil Bonus Box",
+    subtitle: "Grail Bonus Box",
     rarity: "Legendary",
     tier: 3,
     points: 1000,
-    icon: "✨",
+    icon: "👑",
     primary: "#d97706",
     secondary: "#fef08a",
     accent: "#ffffff",
-    badge: "MYSTERY",
+    badge: "GRAIL",
     artType: "gold",
     dims: [0.23, 0.155, 0.285],
     mass: 1.25,
@@ -167,16 +168,27 @@ export const FLAVOR_CATALOG: Record<string, FlavorSpec> = {
   },
 };
 
-export const SNACK_MANIFEST: string[] = [
-  "cheez", "cheez", "cheez", "cheez", "cheez", "cheez",
-  "choco", "choco", "choco", "choco", "choco", "choco",
-  "honey", "honey", "honey", "honey", "honey",
-  "berry", "berry", "berry", "berry", "berry",
-  "matcha", "matcha", "matcha", "matcha",
-  "spicy", "spicy", "spicy", "spicy",
-  "pretzel", "pretzel", "pretzel", "pretzel",
-  "gold", "gold",
-];
+const TIER_SPEC_KEYS: Record<number, string[]> = {
+  0: ["cheez", "choco", "honey"],
+  1: ["berry", "matcha", "spicy"],
+  2: ["pretzel"],
+  3: ["gold"],
+};
+
+export function getFlavorSpecForSlot(slot: PrizeSlot): FlavorSpec {
+  const keys = TIER_SPEC_KEYS[slot.tier] || TIER_SPEC_KEYS[0];
+  const key = keys[slot.slotId % keys.length];
+  return FLAVOR_CATALOG[key] || FLAVOR_CATALOG.cheez;
+}
+
+export function formatSlotPrizeAmount(slot: PrizeSlot): string {
+  if (slot.prizeDecimals === 0 && slot.prizeAmount === BigInt(1)) {
+    return "1/1 NFT";
+  }
+  const num = Number(slot.prizeAmount) / Math.pow(10, slot.prizeDecimals);
+  const formatted = num.toLocaleString("en-US", { maximumFractionDigits: 2 });
+  return `${formatted} ${slot.symbol || "SPL"}`;
+}
 
 function drawSnackIllustration(
   ctx: CanvasRenderingContext2D,
@@ -358,15 +370,29 @@ function drawSnackIllustration(
   ctx.restore();
 }
 
-export function createSnackBoxMaterials(spec: FlavorSpec): THREE.MeshPhysicalMaterial[] {
-  const makeFrontFace = (isBack = false) => {
-    const w = 256;
-    const h = 320;
-    const c = document.createElement("canvas");
-    c.width = w;
-    c.height = h;
-    const ctx = c.getContext("2d")!;
+export function createPrizeBoxMaterials(
+  slot: PrizeSlot,
+  spec: FlavorSpec
+): THREE.MeshPhysicalMaterial[] {
+  const title = (slot.name || spec.name).toUpperCase().slice(0, 14);
+  const rewardLabel = formatSlotPrizeAmount(slot).toUpperCase().slice(0, 18);
+  const tierNames = ["COMMON", "RARE", "EPIC", "GRAIL"];
+  const badgeText = `#${slot.slotId} ${tierNames[slot.tier] || "PRIZE"}`;
 
+  const frontCanvases: Array<{
+    canvas: HTMLCanvasElement;
+    ctx: CanvasRenderingContext2D;
+    tex: THREE.CanvasTexture;
+    isBack: boolean;
+  }> = [];
+
+  const drawFrontFace = (
+    ctx: CanvasRenderingContext2D,
+    w: number,
+    h: number,
+    isBack: boolean,
+    img?: HTMLImageElement
+  ) => {
     const g = ctx.createLinearGradient(0, 0, w, h);
     g.addColorStop(0, spec.primary);
     g.addColorStop(1, spec.foil ? "#92400e" : spec.primary);
@@ -399,56 +425,67 @@ export function createSnackBoxMaterials(spec: FlavorSpec): THREE.MeshPhysicalMat
 
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.font = '900 28px "Inter", "Arial Black", sans-serif';
+    ctx.font = '900 24px "Inter", "Arial Black", sans-serif';
     ctx.fillStyle = "#0f172a";
-    ctx.fillText(spec.name, w / 2 + 2, 57);
+    ctx.fillText(title, w / 2 + 2, 57);
     ctx.fillStyle = spec.foil
       ? "#78350f"
       : spec.secondary === "#fff1f2" || spec.secondary === "#fef9c3"
       ? spec.primary
       : "#ffffff";
-    ctx.fillText(spec.name, w / 2, 55);
+    ctx.fillText(title, w / 2, 55);
 
     if (!isBack) {
       ctx.fillStyle = "#0f172a";
       ctx.beginPath();
-      ctx.roundRect(w - 102, 98, 86, 26, 13);
+      ctx.roundRect(w - 114, 98, 98, 26, 13);
       ctx.fill();
       ctx.fillStyle = "#fde047";
-      ctx.font = '900 13px "Inter", sans-serif';
-      ctx.fillText(spec.badge, w - 59, 112);
+      ctx.font = '900 12px "Inter", sans-serif';
+      ctx.fillText(badgeText, w - 65, 112);
 
-      ctx.fillStyle = "rgba(255,255,255,0.9)";
+      ctx.fillStyle = "rgba(255,255,255,0.92)";
       ctx.beginPath();
-      ctx.ellipse(w / 2, 198, 92, 66, 0, 0, Math.PI * 2);
+      ctx.ellipse(w / 2, 198, 86, 64, 0, 0, Math.PI * 2);
       ctx.fill();
-      drawSnackIllustration(ctx, spec.artType, w / 2, 198, 1.05);
 
-      ctx.fillStyle = "rgba(0,0,0,0.34)";
-      ctx.fillRect(14, 276, w - 28, 28);
-      ctx.fillStyle = "#ffffff";
-      ctx.font = '700 14px "Inter", sans-serif';
-      ctx.fillText(spec.subtitle.toUpperCase(), w / 2, 291);
+      if (img) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(w / 2, 198, 52, 0, Math.PI * 2);
+        ctx.clip();
+        ctx.drawImage(img, w / 2 - 52, 198 - 52, 104, 104);
+        ctx.restore();
+      } else {
+        drawSnackIllustration(ctx, spec.artType, w / 2, 198, 1.0);
+      }
+
+      ctx.fillStyle = "rgba(0,0,0,0.45)";
+      ctx.fillRect(14, 274, w - 28, 30);
+      ctx.fillStyle = "#fef08a";
+      ctx.font = '900 15px "Inter", sans-serif';
+      ctx.fillText(rewardLabel, w / 2, 290);
     } else {
       ctx.fillStyle = "#ffffff";
       ctx.fillRect(26, 108, 128, 184);
       ctx.fillStyle = "#0f172a";
       ctx.textAlign = "left";
       ctx.font = "900 14px sans-serif";
-      ctx.fillText("NUTRITION", 34, 126);
-      ctx.fillRect(34, 134, 112, 4);
+      ctx.fillText("ONCHAIN PRIZE", 32, 126);
+      ctx.fillRect(32, 134, 114, 4);
       ctx.font = "700 11px monospace";
+      const buyback = (Number(slot.fallbackBuybackUsdc) / 1_000_000).toFixed(2);
       [
-        "CALORIES   150",
-        "CRUNCH    100%",
-        "FLAVOR    MAX!",
-        "SUGAR      8g",
-        "SODIUM   180mg",
-        "FUN       999%",
+        `SLOT      #${slot.slotId}`,
+        `TIER      ${tierNames[slot.tier] || "COMMON"}`,
+        `SYMBOL    ${(slot.symbol || "SPL").slice(0, 6)}`,
+        `BUYBACK   ${buyback}`,
+        `NETWORK   DEVNET`,
+        `VRF       LIVE`,
       ].forEach((line, idx) => {
-        ctx.fillText(line, 34, 154 + idx * 21);
+        ctx.fillText(line, 32, 154 + idx * 21);
         ctx.fillStyle = "rgba(0,0,0,0.18)";
-        ctx.fillRect(34, 160 + idx * 21, 112, 1);
+        ctx.fillRect(32, 160 + idx * 21, 114, 1);
         ctx.fillStyle = "#0f172a";
       });
 
@@ -460,13 +497,23 @@ export function createSnackBoxMaterials(spec: FlavorSpec): THREE.MeshPhysicalMat
         ctx.fillRect(bx, 214, bw, 58);
       }
       ctx.font = "700 10px monospace";
-      ctx.fillText("8 90123", 173, 284);
+      ctx.fillText(`#00${String(slot.slotId).padStart(2, "0")}`, 178, 284);
 
       drawSnackIllustration(ctx, spec.artType, 198, 152, 0.5);
     }
+  };
 
+  const makeFrontFace = (isBack = false) => {
+    const w = 256;
+    const h = 320;
+    const c = document.createElement("canvas");
+    c.width = w;
+    c.height = h;
+    const ctx = c.getContext("2d")!;
+    drawFrontFace(ctx, w, h, isBack);
     const tex = new THREE.CanvasTexture(c);
     tex.colorSpace = THREE.SRGBColorSpace;
+    frontCanvases.push({ canvas: c, ctx, tex, isBack });
     return tex;
   };
 
@@ -488,10 +535,10 @@ export function createSnackBoxMaterials(spec: FlavorSpec): THREE.MeshPhysicalMat
     ctx.translate(w / 2, h / 2);
     ctx.rotate(-Math.PI / 2);
     ctx.fillStyle = "#ffffff";
-    ctx.font = '900 22px "Inter", sans-serif';
+    ctx.font = '900 20px "Inter", sans-serif';
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(spec.name, 0, 0);
+    ctx.fillText(title, 0, 0);
     ctx.restore();
 
     const tex = new THREE.CanvasTexture(c);
@@ -502,6 +549,20 @@ export function createSnackBoxMaterials(spec: FlavorSpec): THREE.MeshPhysicalMat
   const frontTex = makeFrontFace(false);
   const backTex = makeFrontFace(true);
   const sideTex = makeSideFace();
+
+  if (slot.image && typeof Image !== "undefined") {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      frontCanvases.forEach((entry) => {
+        if (!entry.isBack) {
+          drawFrontFace(entry.ctx, entry.canvas.width, entry.canvas.height, false, img);
+          entry.tex.needsUpdate = true;
+        }
+      });
+    };
+    img.src = slot.image;
+  }
 
   const matProps = spec.foil
     ? {
@@ -534,6 +595,9 @@ export interface SnackBoxBody {
   symbol: string;
   icon: string;
   mesh: THREE.Mesh;
+  ringMesh?: THREE.Mesh;
+  anchorX: number;
+  anchorZ: number;
   hx: number;
   hy: number;
   hz: number;

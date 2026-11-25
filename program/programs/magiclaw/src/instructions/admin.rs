@@ -309,18 +309,41 @@ pub struct UndelegateMachine<'info> {
     #[account(mut)]
     pub admin: Signer<'info>,
 
-    #[account(
-        mut,
-        seeds = [MACHINE_SEED, machine_config.machine_id.to_le_bytes().as_ref()],
-        bump = machine_config.bump,
-        has_one = admin @ ErrorCode::Unauthorized
-    )]
-    pub machine_config: Box<Account<'info, MachineConfig>>,
+    /// CHECK: Delegated MachineConfig PDA, validated manually before `commit_and_undelegate`
+    /// because the MagicBlock ER runtime reassigns ownership during the CPI before Anchor's exit hook runs.
+    #[account(mut)]
+    pub machine_config: UncheckedAccount<'info>,
 }
 
 /// Commit and undelegate `MachineConfig` from the ER back to L1 so the admin
 /// can restock empty prize slots or update slot inventory.
 pub fn handle_undelegate_machine(ctx: Context<UndelegateMachine>) -> Result<()> {
+    #[derive(AnchorDeserialize)]
+    struct MachineAdminHeader {
+        machine_id: u64,
+        admin: Pubkey,
+    }
+
+    let (machine_id, admin) = {
+        let info = &ctx.accounts.machine_config;
+        require!(
+            info.owner == &crate::ID || info.owner == &ephemeral_rollups_sdk::id(),
+            ErrorCode::Unauthorized
+        );
+        let data = info.try_borrow_data()?;
+        require!(data.len() >= 8 + 40, ErrorCode::InvalidState);
+        let header = MachineAdminHeader::deserialize(&mut &data[8..])
+            .map_err(|_| ErrorCode::InvalidState)?;
+        (header.machine_id, header.admin)
+    };
+
+    require_keys_eq!(admin, ctx.accounts.admin.key(), ErrorCode::Unauthorized);
+    require_keys_eq!(
+        ctx.accounts.machine_config.key(),
+        crate::instructions::common::machine_pda(machine_id).0,
+        ErrorCode::Unauthorized
+    );
+
     MagicIntentBundleBuilder::new(
         ctx.accounts.admin.to_account_info(),
         ctx.accounts.magic_context.to_account_info(),

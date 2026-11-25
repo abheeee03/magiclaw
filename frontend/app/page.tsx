@@ -1,22 +1,13 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef, useSyncExternalStore } from "react";
 import dynamic from "next/dynamic";
 import { useWallet } from "@solana/wallet-adapter-react";
-import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
-import {
-  Coins,
-  Volume2,
-  VolumeX,
-  Shield,
-  Zap,
-  LogOut,
-  Sparkles,
-} from "lucide-react";
-import { VirtualJoystick } from "../components/hud/VirtualJoystick";
-import { TelemetryHUD } from "../components/hud/TelemetryHUD";
+import { useWalletModal } from "@solana/wallet-adapter-react-ui";
+import { ArcadeHUD } from "../components/hud/ArcadeHUD";
 import { PostWinModal } from "../components/modals/PostWinModal";
 import { VaultOddsModal } from "../components/modals/VaultOddsModal";
+import { TicketsModal } from "../components/modals/TicketsModal";
 import { LoadingScreen } from "../components/LoadingScreen";
 import { arcadeAudio } from "../components/audio/ArcadeAudio";
 import type {
@@ -28,6 +19,7 @@ import {
   fetchPlayerSession,
   fetchWalletUsdcBalance,
   fetchPlayerLedgerLastClaimedNonce,
+  fetchPlayerLedgerTotalWithdrawn,
   waitForL1ClaimCommit,
   waitForSessionUndelegated,
   requestDevnetAirdrop,
@@ -58,7 +50,6 @@ import {
 } from "@solana/web3.js";
 import {
   createAssociatedTokenAccountIdempotentInstruction,
-  createAssociatedTokenAccountInstruction,
   createMintToInstruction,
   getAssociatedTokenAddressSync,
 } from "@solana/spl-token";
@@ -75,7 +66,8 @@ const ClawMachineView = dynamic(
 );
 
 export default function ClawVaultPage() {
-  const { publicKey, connected, sendTransaction, signTransaction } = useWallet();
+  const { publicKey, connected, connect, disconnect, sendTransaction, signTransaction } = useWallet();
+  const { setVisible: setWalletModalVisible } = useWalletModal();
   const [machineConfig, setMachineConfig] = useState<MachineConfigData | null>(null);
   const [playerSession, setPlayerSession] = useState<PlayerSessionData | null>(null);
 
@@ -85,11 +77,11 @@ export default function ClawVaultPage() {
 
   const [isMuted, setIsMuted] = useState(false);
   const [activeCamMode, setActiveCamMode] = useState<CamMode>("hero");
+  const [showProjection, setShowProjection] = useState(false);
   const [virtualJoyVector, setVirtualJoyVector] = useState({ x: 0, y: 0 });
   const [isDropRequested, setIsDropRequested] = useState(false);
   const [gameStateText, setGameStateText] = useState("CONNECT WALLET");
   const [isBootHudHidden, setIsBootHudHidden] = useState(true);
-  const [powerReplayCount, setPowerReplayCount] = useState(0);
   const [coinInsertCount, setCoinInsertCount] = useState(0);
   const [isSceneReady, setIsSceneReady] = useState(false);
   const [isLoaderDone, setIsLoaderDone] = useState(false);
@@ -110,13 +102,15 @@ export default function ClawVaultPage() {
     return () => clearInterval(interval);
   }, [isSceneReady]);
 
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  const mounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  );
 
   // Modals, Telemetry & Toast State
   const [isOddsModalOpen, setIsOddsModalOpen] = useState(false);
+  const [isTicketsModalOpen, setIsTicketsModalOpen] = useState(false);
   const [wonPrize, setWonPrize] = useState<WonPrizeInfo | null>(null);
   const [isWinModalOpen, setIsWinModalOpen] = useState(false);
   const [isPendingClaimOnly, setIsPendingClaimOnly] = useState(false);
@@ -128,6 +122,7 @@ export default function ClawVaultPage() {
   const [vrfStatus, setVrfStatus] = useState<"Ready" | "Rolling" | "Fulfilled" | "Missed">("Ready");
   const [onchainVrfResult, setOnchainVrfResult] = useState<OnchainVrfResult | null>(null);
   const vrfNonceCounterRef = useRef<number>(0);
+  const dropInFlightRef = useRef<boolean>(false);
 
   const [machinePda] = useMemo(() => getMachinePda(MACHINE_ID), []);
   const publicKeyBase58 = publicKey?.toBase58() ?? null;
@@ -136,6 +131,21 @@ export default function ClawVaultPage() {
     ? Number(machineConfig.playFeeUsdc) / 1_000_000
     : 1.0;
 
+  const localSessionKey = useMemo(() => {
+    if (!publicKey) return null;
+    return getOrCreateSessionKey(publicKey);
+  }, [publicKey]);
+
+  const sessionKeyMatches = Boolean(
+    localSessionKey &&
+      playerSession?.sessionKey &&
+      playerSession.sessionKey.equals(localSessionKey.publicKey)
+  );
+
+  const hasPendingPrize = Boolean(
+    playerSession?.state === "WonPendingChoice" || isPendingClaimOnly
+  );
+
   const isOnchainActive = Boolean(
     connected &&
       publicKey &&
@@ -143,7 +153,13 @@ export default function ClawVaultPage() {
       playerSession?.isDelegated
   );
 
-  const canPlayTurn = Boolean(isOnchainActive && usdcBalance >= playFeeUsd);
+  const canPlayTurn = Boolean(
+    isOnchainActive &&
+      sessionKeyMatches &&
+      !hasPendingPrize &&
+      playerSession?.state !== "AwaitingVrf" &&
+      (usdcBalance >= playFeeUsd || playerSession?.state === "Steering")
+  );
 
   const showToast = useCallback((icon: string, title: string, sub: string, duration = 3500) => {
     setToastMessage({ icon, title, sub });
@@ -152,7 +168,37 @@ export default function ClawVaultPage() {
     }, duration);
   }, []);
 
-  const refreshMachineAndSession = useCallback(async () => {
+  const runWithWalletAuth = useCallback(
+    async <T,>(fn: () => Promise<T>): Promise<T> => {
+      try {
+        return await fn();
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        const isAuthErr =
+          /not been authorized|unauthorized|walletnotconnected|walletdisconnected/i.test(
+            msg
+          );
+        if (!isAuthErr) throw err;
+
+        try {
+          await connect();
+          return await fn();
+        } catch (retryErr: unknown) {
+          await disconnect().catch(() => {});
+          setWalletModalVisible(true);
+          const retryMsg =
+            retryErr instanceof Error ? retryErr.message : String(retryErr);
+          if (/not been authorized|unauthorized/i.test(retryMsg)) {
+            throw new Error("Wallet authorization expired — please reconnect your wallet.");
+          }
+          throw retryErr;
+        }
+      }
+    },
+    [connect, disconnect, setWalletModalVisible]
+  );
+
+  const refreshMachineAndSession = useCallback(async (openWinModalOnRestore = true) => {
     const cfg = await fetchMachineConfig(MACHINE_ID);
     setMachineConfig(cfg);
     if (publicKeyBase58) {
@@ -215,33 +261,43 @@ export default function ClawVaultPage() {
             sellBackUsdc: buybackUsd,
           });
           setIsPendingClaimOnly(hasUnsettledClaim);
-          setIsWinModalOpen(true);
+          if (openWinModalOnRestore) {
+            setIsWinModalOpen(true);
+          }
         }
       } else {
         setIsPendingClaimOnly(false);
       }
 
-      setGameStateText(
-        sess?.state === "WonPendingChoice"
-          ? "CLAIM PRIZE!"
-          : hasUnsettledClaim
-          ? "FINISH L1 CLAIM!"
-          : sess?.isDelegated && Number(sess.usdcBalance) >= Number(cfg.playFeeUsdc)
-          ? "READY"
-          : sess?.isDelegated
-          ? "LOW BALANCE"
-          : "DEPOSIT TO PLAY"
-      );
+      if (openWinModalOnRestore) {
+        setGameStateText(
+          sess?.state === "WonPendingChoice"
+            ? "CLAIM PRIZE!"
+            : hasUnsettledClaim
+            ? "FINISH L1 CLAIM!"
+            : sess?.isDelegated &&
+              (Number(sess.usdcBalance) >= Number(cfg.playFeeUsdc) ||
+                sess.state === "Steering")
+            ? "READY"
+            : sess?.isDelegated
+            ? "LOW BALANCE"
+            : "DEPOSIT TO PLAY"
+        );
+      }
     } else {
       setPlayerSession(null);
       setWalletUsdcBalance(0);
       setUsdcBalance(0);
+      setIsPendingClaimOnly(false);
       setGameStateText("CONNECT WALLET");
     }
   }, [machinePda, publicKeyBase58]);
 
   useEffect(() => {
-    refreshMachineAndSession();
+    const t = setTimeout(() => {
+      void refreshMachineAndSession();
+    }, 0);
+    return () => clearTimeout(t);
   }, [refreshMachineAndSession]);
 
   const toggleMute = () => {
@@ -250,8 +306,8 @@ export default function ClawVaultPage() {
     arcadeAudio.setMuted(nextMuted);
   };
 
-  // 1-Click Airdrop $10 Test USDC directly into delegated PlayerSession
-  const handleAirdropUsdcToSession = async () => {
+  // 1-Click Airdrop 10 Test USDC directly into user's wallet (separate from buying tickets)
+  const handleAirdropTestUsdc = async () => {
     if (!publicKey || !machineConfig) {
       showToast("👛", "CONNECT WALLET", "Connect your Devnet wallet first.");
       return;
@@ -259,58 +315,16 @@ export default function ClawVaultPage() {
 
     setFaucetLoading(true);
     arcadeAudio.playCoin();
-    setCoinInsertCount((c) => c + 1);
 
     try {
-      // If session is already delegated (e.g., at $0 balance), undelegate to L1 first so we can top up
-      if (playerSession?.isDelegated) {
-        if (usdcBalance >= playFeeUsd) {
-          showToast(
-            "⚡",
-            "SESSION ALREADY FUNDED",
-            "You already have playable balance in your ER session.",
-            3500
-          );
-          return;
-        }
-        showToast("🔄", "PREPARING REFILL", "Undelegating empty ER session back to L1...");
-        const undelTx = new Transaction().add(
-          createRequestWithdrawAndUndelegateIx(
-            publicKey,
-            machinePda,
-            machineConfig.usdcMint,
-            BigInt(0)
-          )
-        );
-        const { blockhash: erBh } = await erConnection.getLatestBlockhash("confirmed");
-        undelTx.recentBlockhash = erBh;
-        undelTx.feePayer = publicKey;
-        if (!signTransaction) {
-          throw new Error("Wallet does not support signTransaction for MagicBlock ER.");
-        }
-        const signedUndel = await signTransaction(undelTx);
-        const undelSig = await erConnection.sendRawTransaction(
-          signedUndel.serialize(),
-          { skipPreflight: true }
-        );
-        await confirmTx(erConnection, undelSig);
-
-        const undelegated = await waitForSessionUndelegated(publicKey, machinePda);
-        if (!undelegated) {
-          throw new Error("Timed out waiting for session to undelegate to L1.");
-        }
-      }
-
-      const sessionKey = getOrCreateSessionKey(publicKey);
       const usdcMint = machineConfig.usdcMint;
-      const amount = BigInt(10_000_000); // $10.00 Test USDC
+      const amount = BigInt(10_000_000); // 10.00 Test USDC
 
       const res = await fetch("/api/faucet-usdc", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           owner: publicKey.toBase58(),
-          sessionKey: sessionKey.publicKey.toBase58(),
           usdcMint: usdcMint.toBase58(),
           amountUsdc: Number(amount),
         }),
@@ -321,11 +335,10 @@ export default function ClawVaultPage() {
       let sig: string;
       if (res.ok && data.txBase64) {
         const tx = Transaction.from(Buffer.from(data.txBase64, "base64"));
-        showToast("🪙", "AIRDROP + DEPOSIT ($10)", "Approve 1 transaction in your wallet...");
-        sig = await sendTransaction(tx, baseConnection);
+        showToast("🪙", "AIRDROPPING 10 TEST USDC", "Approve 1 transaction in your wallet...");
+        sig = await runWithWalletAuth(() => sendTransaction(tx, baseConnection));
         await confirmTx(baseConnection, sig);
       } else if (data.needsConfig) {
-        // Fallback: if connected wallet IS the mint authority, build & sign the 1-tx bundle directly!
         const mintParsed = await baseConnection.getParsedAccountInfo(usdcMint);
         const mintAuthority =
           (mintParsed.value?.data as { parsed?: { info?: { mintAuthority?: string } } })
@@ -342,8 +355,7 @@ export default function ClawVaultPage() {
         }
 
         const ownerUsdcAta = getAssociatedTokenAddressSync(usdcMint, publicKey);
-        const tx = new Transaction();
-        tx.add(
+        const tx = new Transaction().add(
           createAssociatedTokenAccountIdempotentInstruction(
             publicKey,
             ownerUsdcAta,
@@ -353,35 +365,12 @@ export default function ClawVaultPage() {
           createMintToInstruction(usdcMint, ownerUsdcAta, publicKey, amount)
         );
 
-        const skBal = await baseConnection.getBalance(sessionKey.publicKey);
-        if (skBal < 0.002 * LAMPORTS_PER_SOL) {
-          tx.add(
-            SystemProgram.transfer({
-              fromPubkey: publicKey,
-              toPubkey: sessionKey.publicKey,
-              lamports: 0.005 * LAMPORTS_PER_SOL,
-            })
-          );
-        }
-
-        tx.add(
-          createInitAndDepositSessionIx(
-            publicKey,
-            machinePda,
-            usdcMint,
-            amount,
-            sessionKey.publicKey,
-            BigInt(86400)
-          ),
-          createDelegateSessionIx(publicKey, machinePda)
-        );
-
         const { blockhash } = await baseConnection.getLatestBlockhash("confirmed");
         tx.recentBlockhash = blockhash;
         tx.feePayer = publicKey;
 
-        showToast("🪙", "MINTING + DEPOSITING $10", "Approve 1 transaction in your wallet...");
-        sig = await sendTransaction(tx, baseConnection);
+        showToast("🪙", "AIRDROPPING 10 TEST USDC", "Approve in your wallet...");
+        sig = await runWithWalletAuth(() => sendTransaction(tx, baseConnection));
         await confirmTx(baseConnection, sig);
       } else {
         throw new Error(data.error || "Faucet request failed");
@@ -389,7 +378,7 @@ export default function ClawVaultPage() {
 
       setLastSignature(sig);
       await refreshMachineAndSession();
-      showToast("✅", "$10.00 IN SESSION!", "Minted, deposited, and delegated to MagicBlock ER in 1 tx!");
+      showToast("✅", "10 TEST USDC AIRDROPPED!", "Now click Buy Tickets to load your session!");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       showToast("❌", "AIRDROP FAILED", msg.slice(0, 100), 5000);
@@ -398,41 +387,87 @@ export default function ClawVaultPage() {
     }
   };
 
-  // Deposit existing wallet Test USDC & Delegate PlayerSession to MagicBlock ER
-  const handleDepositAndDelegate = async (depositUsd: number = 5) => {
+  // Buy Tickets from Wallet Test USDC -> Deposit into PlayerSession & Delegate to MagicBlock ER
+  const handleBuyTickets = async (ticketCount: number = 5) => {
     if (!publicKey || !machineConfig) {
       showToast("👛", "CONNECT WALLET", "Connect your Devnet wallet first.");
       return;
     }
 
-    if (walletUsdcBalance < depositUsd) {
+    const depositBaseUnits = BigInt(
+      Math.max(1, Math.round(ticketCount)) * Number(machineConfig.playFeeUsdc)
+    );
+    const requiredUsd = Number(depositBaseUnits) / 1_000_000;
+    const availableUsd =
+      walletUsdcBalance + (playerSession?.isDelegated ? usdcBalance : 0);
+
+    if (availableUsd < requiredUsd) {
       showToast(
         "🪙",
-        "NO TEST USDC IN WALLET",
-        "Click AIRDROP $10 -> SESSION to mint & deposit Test USDC in 1 tx!",
+        "INSUFFICIENT TEST USDC",
+        `Need ${requiredUsd.toFixed(2)} Test USDC. Click Airdrop 10 Test USDC first!`,
         4500
       );
       return;
     }
 
     setOnboardingLoading(true);
+    arcadeAudio.playCoin();
+    setCoinInsertCount((c) => c + 1);
+
     try {
+      // If session is currently delegated on ER, undelegate back to L1 first so deposit never hits 3007
+      if (playerSession?.isDelegated) {
+        if (!signTransaction) {
+          throw new Error("Wallet does not support signTransaction for MagicBlock ER.");
+        }
+        showToast("🔄", "SYNCING ER SESSION", "Undelegating session to L1 before adding tickets...");
+        const undelTx = new Transaction().add(
+          createRequestWithdrawAndUndelegateIx(
+            publicKey,
+            machinePda,
+            machineConfig.usdcMint,
+            BigInt(0)
+          )
+        );
+        const { blockhash: erBh } = await erConnection.getLatestBlockhash("confirmed");
+        undelTx.recentBlockhash = erBh;
+        undelTx.feePayer = publicKey;
+
+        const signedUndel = await runWithWalletAuth(() => signTransaction(undelTx));
+        await erConnection.sendRawTransaction(
+          signedUndel.serialize(),
+          { skipPreflight: false, preflightCommitment: "processed" }
+        );
+
+        const undelegated = await waitForSessionUndelegated(publicKey, machinePda);
+        if (!undelegated) {
+          throw new Error("Timed out waiting for session to undelegate to L1.");
+        }
+      }
+
       const sessionKey = getOrCreateSessionKey(publicKey);
       const usdcMint = machineConfig.usdcMint;
       const ownerUsdcAta = getAssociatedTokenAddressSync(usdcMint, publicKey);
-      const depositBaseUnits = BigInt(Math.round(depositUsd * 1_000_000));
+
+      // Settle any pending withdrawn balance from the undelegated session before depositing
+      const [l1Session, ledgerWithdrawn] = await Promise.all([
+        fetchPlayerSession(publicKey, machinePda),
+        fetchPlayerLedgerTotalWithdrawn(publicKey, machinePda),
+      ]);
 
       const tx = new Transaction();
-      const ataInfo = await baseConnection.getAccountInfo(ownerUsdcAta);
-      if (!ataInfo) {
-        tx.add(
-          createAssociatedTokenAccountInstruction(
-            publicKey,
-            ownerUsdcAta,
-            publicKey,
-            usdcMint
-          )
-        );
+      tx.add(
+        createAssociatedTokenAccountIdempotentInstruction(
+          publicKey,
+          ownerUsdcAta,
+          publicKey,
+          usdcMint
+        )
+      );
+
+      if (l1Session && l1Session.cumulativeWithdrawnUsdc > ledgerWithdrawn) {
+        tx.add(createExecuteL1UsdcWithdrawIx(machinePda, publicKey, usdcMint));
       }
 
       const skBal = await baseConnection.getBalance(sessionKey.publicKey);
@@ -454,33 +489,30 @@ export default function ClawVaultPage() {
           depositBaseUnits,
           sessionKey.publicKey,
           BigInt(86400)
-        )
+        ),
+        createDelegateSessionIx(publicKey, machinePda)
       );
-
-      if (!playerSession?.isDelegated) {
-        tx.add(createDelegateSessionIx(publicKey, machinePda));
-      }
 
       const { blockhash } = await baseConnection.getLatestBlockhash("confirmed");
       tx.recentBlockhash = blockhash;
       tx.feePayer = publicKey;
 
-      showToast("⚡", "DEPOSITING & DELEGATING", "Approve in wallet to enter MagicBlock ER...");
-      const sig = await sendTransaction(tx, baseConnection);
+      showToast("🎟️", `BUYING ${ticketCount} TICKETS`, "Approve in wallet to load tickets into ER...");
+      const sig = await runWithWalletAuth(() => sendTransaction(tx, baseConnection));
       await confirmTx(baseConnection, sig);
       setLastSignature(sig);
 
       await refreshMachineAndSession();
-      showToast("✅", "SESSION DELEGATED TO ER!", `$${depositUsd}.00 USDC ready for 10ms gasless play!`);
+      showToast("✅", `${ticketCount} TICKETS LOADED!`, "Ready for 10ms gasless play on MagicBlock ER!");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      showToast("❌", "DEPOSIT FAILED", msg.slice(0, 90), 5000);
+      showToast("❌", "BUY TICKETS FAILED", msg.slice(0, 100), 5000);
     } finally {
       setOnboardingLoading(false);
     }
   };
 
-  // Withdraw USDC & Undelegate from ER back to L1 wallet
+  // Withdraw Tickets to Wallet (Undelegates ER session & transfers session Test USDC back to wallet)
   const handleWithdrawUsdc = async () => {
     if (!publicKey || !machineConfig || !playerSession?.isDelegated) return;
     setOnboardingLoading(true);
@@ -500,30 +532,41 @@ export default function ClawVaultPage() {
         throw new Error("Wallet does not support signTransaction for MagicBlock ER.");
       }
 
-      showToast("💸", "WITHDRAWING TO WALLET", "Approve undelegation from ER to L1...");
-      const signed = await signTransaction(tx);
-      const sig = await erConnection.sendRawTransaction(signed.serialize(), {
-        skipPreflight: true,
+      showToast("💸", "WITHDRAWING TICKETS", "Approve undelegation from ER to L1...");
+      const signed = await runWithWalletAuth(() => signTransaction(tx));
+      await erConnection.sendRawTransaction(signed.serialize(), {
+        skipPreflight: false,
+        preflightCommitment: "processed",
       });
-      await confirmTx(erConnection, sig);
 
       const undelegated = await waitForSessionUndelegated(publicKey, machinePda);
       if (!undelegated) {
         throw new Error("Timed out waiting for undelegation to land on Solana L1.");
       }
 
+      const ownerUsdcAta = getAssociatedTokenAddressSync(
+        machineConfig.usdcMint,
+        publicKey
+      );
       const l1Tx = new Transaction().add(
+        createAssociatedTokenAccountIdempotentInstruction(
+          publicKey,
+          ownerUsdcAta,
+          publicKey,
+          machineConfig.usdcMint
+        ),
         createExecuteL1UsdcWithdrawIx(machinePda, publicKey, machineConfig.usdcMint)
       );
       const { blockhash: l1Bh } = await baseConnection.getLatestBlockhash("confirmed");
       l1Tx.recentBlockhash = l1Bh;
       l1Tx.feePayer = publicKey;
-      const l1Sig = await sendTransaction(l1Tx, baseConnection);
+      showToast("🪙", "SETTLING TO WALLET", "Approve L1 transfer to receive your Test USDC...");
+      const l1Sig = await runWithWalletAuth(() => sendTransaction(l1Tx, baseConnection));
       await confirmTx(baseConnection, l1Sig);
       setLastSignature(l1Sig);
 
       await refreshMachineAndSession();
-      showToast("✅", "USDC WITHDRAWN!", "Balance returned to your Devnet wallet.");
+      showToast("✅", "TICKETS WITHDRAWN TO WALLET!", "Session Test USDC returned to your Devnet wallet.");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       showToast("❌", "WITHDRAW FAILED", msg.slice(0, 90), 5000);
@@ -562,52 +605,132 @@ export default function ClawVaultPage() {
     async (clientSeed: number, clawX: number, clawZ: number) => {
       setIsDropRequested(false);
 
-      if (!isOnchainActive || !publicKey || !playerSession) {
-        showToast("👛", "SESSION REQUIRED", "Connect wallet & deposit Test USDC to play!");
+      if (dropInFlightRef.current) {
         return;
       }
 
+      if (!isOnchainActive || !publicKey) {
+        showToast("👛", "SESSION REQUIRED", "Connect wallet & buy Tickets to play!");
+        return;
+      }
+
+      if (!sessionKeyMatches) {
+        showToast("🔑", "SESSION KEY MISMATCH", "Open Tickets to re-sync your session key.");
+        return;
+      }
+
+      if (hasPendingPrize) {
+        showToast("🏆", "PRIZE WAITING", "Claim or sell back your won prize first.");
+        setIsWinModalOpen(true);
+        return;
+      }
+
+      dropInFlightRef.current = true;
       setGameStateText("DROPPING");
       setVrfStatus("Rolling");
-      showToast("⚡", "MAGICBLOCK VRF REQUESTED", "Deducting $1.00 & rolling ~50ms VRF on ER...");
 
       try {
         const sessionKey = getOrCreateSessionKey(publicKey);
         const t0 = Date.now();
+
+        // Fetch fresh ER session + latest blockhash in parallel to avoid stale state & minimize latency
+        const [liveSession, { blockhash }] = await Promise.all([
+          fetchPlayerSession(publicKey, machinePda),
+          erConnection.getLatestBlockhash("confirmed"),
+        ]);
+
+        if (!liveSession || !liveSession.isDelegated) {
+          showToast("🎟️", "SESSION NOT ACTIVE", "Open Tickets to deposit and start playing.");
+          vrfNonceCounterRef.current += 1;
+          setOnchainVrfResult({
+            nonce: vrfNonceCounterRef.current,
+            outcome: "Miss",
+            roll: 9999,
+            targetSlot: 0,
+            isBullseye: false,
+          });
+          await refreshMachineAndSession(false);
+          return;
+        }
+
+        setPlayerSession(liveSession);
+        setUsdcBalance(Number(liveSession.usdcBalance) / 1_000_000);
+
+        if (liveSession.state === "WonPendingChoice") {
+          showToast("🏆", "PRIZE WAITING", "Claim or sell back your won prize first.");
+          await refreshMachineAndSession(true);
+          return;
+        }
+
+        if (liveSession.state === "AwaitingVrf") {
+          const settled = await waitForVrfResolution(
+            publicKey,
+            machinePda,
+            liveSession.vrfRequestNonce,
+            5000
+          );
+          if (settled) {
+            setPlayerSession(settled);
+            setUsdcBalance(Number(settled.usdcBalance) / 1_000_000);
+          }
+          await refreshMachineAndSession(false);
+          return;
+        }
+
+        const feeUnits = machineConfig?.playFeeUsdc ?? BigInt(1_000_000);
+        if (liveSession.state === "Idle" && liveSession.usdcBalance < feeUnits) {
+          showToast("🎟️", "OUT OF TICKETS", "Click Tickets (top left) to buy more!");
+          setIsTicketsModalOpen(true);
+          vrfNonceCounterRef.current += 1;
+          setOnchainVrfResult({
+            nonce: vrfNonceCounterRef.current,
+            outcome: "Miss",
+            roll: 9999,
+            targetSlot: 0,
+            isBullseye: false,
+          });
+          setVrfStatus("Ready");
+          setGameStateText("LOW BALANCE");
+          return;
+        }
+
         const tx = new Transaction();
+        let curX = liveSession.clawX;
+        let curZ = liveSession.clawZ;
+        const isStaleSteering =
+          liveSession.state === "Steering" &&
+          Date.now() / 1000 > Number(liveSession.playExpiresAt);
 
-        let curX = playerSession.clawX;
-        let curZ = playerSession.clawZ;
-
-        if (playerSession.state === "Idle") {
+        if (liveSession.state === "Idle") {
           tx.add(createStartPlayIx(sessionKey.publicKey, machinePda, publicKey));
           curX = 500;
           curZ = 500;
         }
 
-        while (curX !== clawX || curZ !== clawZ) {
-          const dx = Math.max(-MAX_STEP, Math.min(MAX_STEP, clawX - curX));
-          const dz = Math.max(-MAX_STEP, Math.min(MAX_STEP, clawZ - curZ));
-          tx.add(createSteerClawIx(sessionKey.publicKey, machinePda, publicKey, dx, dz));
-          curX += dx;
-          curZ += dz;
+        if (!isStaleSteering) {
+          while (curX !== clawX || curZ !== clawZ) {
+            const dx = Math.max(-MAX_STEP, Math.min(MAX_STEP, clawX - curX));
+            const dz = Math.max(-MAX_STEP, Math.min(MAX_STEP, clawZ - curZ));
+            tx.add(createSteerClawIx(sessionKey.publicKey, machinePda, publicKey, dx, dz));
+            curX += dx;
+            curZ += dz;
+          }
         }
 
         tx.add(createDropClawIx(sessionKey.publicKey, machinePda, publicKey, clientSeed));
 
-        const { blockhash } = await erConnection.getLatestBlockhash("confirmed");
         tx.recentBlockhash = blockhash;
         tx.feePayer = sessionKey.publicKey;
         tx.sign(sessionKey);
 
         const sig = await erConnection.sendRawTransaction(tx.serialize(), {
-          skipPreflight: true,
+          skipPreflight: false,
+          preflightCommitment: "processed",
         });
-        await confirmTx(erConnection, sig);
         setErLatencyMs(Math.max(8, Date.now() - t0));
         setLastSignature(sig);
 
-        const expectedNonce = playerSession.vrfRequestNonce + BigInt(1);
+        const expectedNonce = liveSession.vrfRequestNonce + BigInt(1);
         const resolved = await waitForVrfResolution(publicKey, machinePda, expectedNonce);
 
         if (resolved) {
@@ -628,7 +751,30 @@ export default function ClawVaultPage() {
             targetSlot: resolved.targetSlot,
             isBullseye: resolved.isBullseye,
           });
-          setGameStateText(outcome === "Won" ? "WINNER!" : "READY");
+
+          const targetSlotInfo = machineConfig?.slots.find(
+            (s) => s.slotId === resolved.targetSlot
+          );
+          if (outcome === "Won") {
+            setGameStateText("WINNER!");
+            showToast(
+              "🏆",
+              resolved.isBullseye ? "BULLSEYE GRAB!" : "VRF LOCKED A GRAB!",
+              `Lifting ${targetSlotInfo?.name || `Slot #${resolved.targetSlot}`} (Roll ${resolved.lastVrfRoll})!`
+            );
+          } else if (outcome === "Slipped") {
+            setGameStateText("SLIPPED!");
+            showToast(
+              "😬",
+              "GRIP SLIPPED ON VRF",
+              `Near miss on ${targetSlotInfo?.name || `Slot #${resolved.targetSlot}`} (Roll ${resolved.lastVrfRoll}). Try again!`
+            );
+          } else {
+            setGameStateText("MISSED");
+            showToast("💨", "CLAW MISSED", "No prize aligned within capture radius.");
+          }
+
+          void refreshMachineAndSession(false);
         } else {
           setVrfStatus("Missed");
           setGameStateText("READY");
@@ -640,6 +786,8 @@ export default function ClawVaultPage() {
             targetSlot: 0,
             isBullseye: false,
           });
+          showToast("⏳", "VRF DELAYED", "Re-syncing session from MagicBlock ER...");
+          void refreshMachineAndSession(false);
         }
       } catch (err: unknown) {
         console.error("ER drop failed:", err);
@@ -655,9 +803,21 @@ export default function ClawVaultPage() {
           targetSlot: 0,
           isBullseye: false,
         });
+        void refreshMachineAndSession(false);
+      } finally {
+        dropInFlightRef.current = false;
       }
     },
-    [isOnchainActive, publicKey, playerSession, machinePda, showToast]
+    [
+      isOnchainActive,
+      publicKey,
+      sessionKeyMatches,
+      hasPendingPrize,
+      machinePda,
+      machineConfig,
+      showToast,
+      refreshMachineAndSession,
+    ]
   );
 
   const handleWinPrize = useCallback((prize: WonPrizeInfo) => {
@@ -689,7 +849,7 @@ export default function ClawVaultPage() {
     await confirmTx(erConnection, sig);
     setLastSignature(sig);
     await refreshMachineAndSession();
-    showToast("💵", "ONCHAIN SELL-BACK SETTLED!", `Credited +$${wonPrize.sellBackUsdc.toFixed(2)} USDC on ER.`);
+    showToast("🎟️", "ONCHAIN SELL-BACK SETTLED!", `Credited +${wonPrize.sellBackUsdc.toFixed(2)} Tickets to your session.`);
   };
 
   // Claim to Wallet action: commits ER claim cleanly to L1, then creates ATA (if needed) + executes L1 transfer
@@ -771,7 +931,7 @@ export default function ClawVaultPage() {
       l1ClaimTx.recentBlockhash = l1Bh;
       l1ClaimTx.feePayer = publicKey;
       showToast("📦", "CLAIMING TO WALLET", "Approve L1 transfer in your wallet...");
-      const l1Sig = await sendTransaction(l1ClaimTx, baseConnection);
+      const l1Sig = await runWithWalletAuth(() => sendTransaction(l1ClaimTx, baseConnection));
       await confirmTx(baseConnection, l1Sig);
       setLastSignature(l1Sig);
     }
@@ -782,25 +942,65 @@ export default function ClawVaultPage() {
   };
 
   const triggerDropBtn = () => {
+    if (dropInFlightRef.current) {
+      return;
+    }
     if (!connected || !publicKey) {
       showToast("👛", "CONNECT WALLET FIRST", "Connect your Solana Devnet wallet to play!");
       return;
     }
     if (!isOnchainActive) {
-      showToast("⚡", "DEPOSIT TO START", "Click AIRDROP $10 -> SESSION or DEPOSIT $5 first!");
+      showToast("🎟️", "TICKETS REQUIRED", "Click Tickets in the top left to get free tickets!");
+      setIsTicketsModalOpen(true);
       return;
     }
-    if (usdcBalance < playFeeUsd) {
-      showToast("🪙", "INSUFFICIENT SESSION BALANCE", "Cashout & re-deposit to play more turns!");
+    if (!sessionKeyMatches) {
+      showToast("🔑", "SESSION KEY MISMATCH", "Open Tickets to re-sync your session key!");
+      setIsTicketsModalOpen(true);
+      return;
+    }
+    if (hasPendingPrize) {
+      showToast("🏆", "CLAIM OR SELL PRIZE FIRST", "Resolve your pending prize to keep playing.");
+      setIsWinModalOpen(true);
+      return;
+    }
+    if (playerSession?.state === "AwaitingVrf") {
+      showToast("⚡", "VRF STILL SETTLING", "Waiting for MagicBlock VRF outcome...");
+      return;
+    }
+    if (usdcBalance < playFeeUsd && playerSession?.state !== "Steering") {
+      showToast("🎟️", "OUT OF TICKETS", "Click Tickets in the top left to buy more!");
+      setIsTicketsModalOpen(true);
       return;
     }
     arcadeAudio.init();
     setIsDropRequested(true);
   };
 
+  const handleClawStateChange = useCallback(
+    (clawState: string) => {
+      if (clawState === "READY") {
+        setGameStateText(
+          hasPendingPrize
+            ? "CLAIM PRIZE!"
+            : canPlayTurn
+            ? "READY"
+            : isOnchainActive
+            ? "LOW BALANCE"
+            : "DEPOSIT TO PLAY"
+        );
+      } else {
+        setGameStateText(clawState);
+      }
+    },
+    [hasPendingPrize, canPlayTurn, isOnchainActive]
+  );
+
   const handleSceneReady = useCallback(() => {
     setIsSceneReady(true);
   }, []);
+
+  const ticketBalance = playFeeUsd > 0 ? usdcBalance / playFeeUsd : usdcBalance;
 
   return (
     <main className="relative w-screen h-screen overflow-hidden bg-[#060710] flex flex-col justify-between">
@@ -812,7 +1012,7 @@ export default function ClawVaultPage() {
       <div className="absolute inset-0 z-0">
         <ClawMachineView
           slots={machineConfig?.slots}
-          usdcBalance={usdcBalance.toFixed(2)}
+          usdcBalance={ticketBalance.toFixed(2)}
           isSteeringAllowed={canPlayTurn}
           isOnchainActive={isOnchainActive}
           onchainVrfResult={onchainVrfResult}
@@ -824,277 +1024,64 @@ export default function ClawVaultPage() {
           virtualJoyVector={virtualJoyVector}
           isDropRequested={isDropRequested}
           gameStateText={gameStateText}
-          powerReplayCount={powerReplayCount}
+          powerReplayCount={0}
           coinInsertCount={coinInsertCount}
           isLoaderVisible={!isLoaderDone}
+          showProjection={showProjection}
           onSceneReady={handleSceneReady}
           onBootStateChange={(hudHidden) => setIsBootHudHidden(hudHidden)}
+          onClawStateChange={handleClawStateChange}
         />
       </div>
 
-      {/* Top Floating Arcade Header */}
-      <header
-        className={`hud-header-anim ${
-          isBootHudHidden ? "hud-boot-hidden" : ""
-        } relative z-20 p-2.5 sm:p-4 flex flex-wrap items-center justify-between gap-2 pointer-events-none`}
-      >
-        <div className="hud-glass rounded-2xl px-3 py-2 sm:px-4 sm:py-2.5 flex flex-wrap items-center gap-2.5 sm:gap-3.5 pointer-events-auto shadow-2xl">
-          <div className="flex flex-col leading-none pr-2 border-r border-white/10">
-            <span className="font-arcade text-sm sm:text-base font-black tracking-[0.14em] text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-orange-300 to-pink-400">
-              MAGICLAW
-            </span>
-            <span className="text-[9px] text-pink-300/80 font-mono font-bold tracking-[0.18em] mt-0.5">
-              {isOnchainActive ? "LIVE DEVNET ER" : "WALLET REQUIRED"}
-            </span>
-          </div>
+      <ArcadeHUD
+        mounted={mounted}
+        connected={connected}
+        isBootHudHidden={isBootHudHidden}
+        canPlayTurn={canPlayTurn}
+        isOnchainActive={isOnchainActive}
+        hasPendingPrize={hasPendingPrize}
+        sessionKeyMismatch={Boolean(isOnchainActive && !sessionKeyMatches)}
+        ticketBalance={ticketBalance}
+        activeCamMode={activeCamMode}
+        showProjection={showProjection}
+        inStockCount={
+          machineConfig
+            ? machineConfig.slots.filter((s) => s.inStock && !s.reserved).length
+            : 0
+        }
+        isMuted={isMuted}
+        toastMessage={toastMessage}
+        gameStateText={gameStateText}
+        erLatencyMs={erLatencyMs}
+        isMachineDelegated={Boolean(machineConfig?.isDelegated)}
+        vrfStatus={vrfStatus}
+        lastSignature={lastSignature}
+        onOpenTicketsModal={() => setIsTicketsModalOpen(true)}
+        onOpenWinModal={() => setIsWinModalOpen(true)}
+        onCamModeChange={setActiveCamMode}
+        onToggleProjection={() => setShowProjection((v) => !v)}
+        onOpenOddsModal={() => setIsOddsModalOpen(true)}
+        onToggleMute={toggleMute}
+        onJoystickMove={setVirtualJoyVector}
+        onTriggerDrop={triggerDropBtn}
+      />
 
-          <div className="flex flex-col leading-tight">
-            <span className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold font-mono">
-              Session Balance
-            </span>
-            <span className="font-arcade text-sm sm:text-lg font-black text-amber-300">
-              ${usdcBalance.toFixed(2)}{" "}
-              <span className="text-[10px] text-slate-400 font-normal">USDC</span>
-            </span>
-          </div>
-
-          {connected && (
-            <div className="hidden md:flex flex-col leading-tight pl-2 border-l border-white/10">
-              <span className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold font-mono">
-                Wallet USDC
-              </span>
-              <span className="font-mono text-xs font-bold text-emerald-300">
-                ${walletUsdcBalance.toFixed(2)}
-              </span>
-            </div>
-          )}
-
-          {connected && (!isOnchainActive || usdcBalance < playFeeUsd) && (
-            <>
-              <button
-                onClick={handleAirdropUsdcToSession}
-                disabled={faucetLoading || onboardingLoading}
-                title="Mint $10 Test USDC, deposit & delegate to ER"
-                className="rounded-xl px-2.5 py-1.5 bg-gradient-to-r from-emerald-500 to-cyan-500 hover:brightness-110 active:scale-95 text-slate-950 font-arcade text-[11px] font-black tracking-wide cursor-pointer flex items-center gap-1 shadow-md disabled:opacity-50"
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>
-                  {faucetLoading
-                    ? "MINTING..."
-                    : isOnchainActive
-                    ? "REFILL $10 → SESSION"
-                    : "AIRDROP $10 → SESSION"}
-                </span>
-              </button>
-
-              {!isOnchainActive && walletUsdcBalance >= 5 && (
-                <button
-                  onClick={() => handleDepositAndDelegate(5)}
-                  disabled={onboardingLoading}
-                  className="rounded-xl px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-arcade text-[11px] font-bold cursor-pointer flex items-center gap-1 disabled:opacity-50"
-                >
-                  <Zap className="w-3.5 h-3.5" />
-                  <span>{onboardingLoading ? "DELEGATING..." : "DEPOSIT $5"}</span>
-                </button>
-              )}
-            </>
-          )}
-
-          {connected && isOnchainActive && usdcBalance > 0 && (
-            <button
-              onClick={handleWithdrawUsdc}
-              disabled={onboardingLoading}
-              title="Withdraw USDC back to your Devnet wallet"
-              className="rounded-xl px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-emerald-300 font-arcade text-[11px] font-bold cursor-pointer flex items-center gap-1 disabled:opacity-40"
-            >
-              <LogOut className="w-3.5 h-3.5" />
-              <span>CASHOUT</span>
-            </button>
-          )}
-
-          {connected && (
-            <button
-              onClick={handleSolFaucet}
-              disabled={faucetLoading}
-              title="Request 1 Devnet SOL Airdrop"
-              className="rounded-xl px-2.5 py-1.5 bg-gradient-to-r from-amber-500 to-yellow-500 hover:brightness-110 active:scale-95 text-slate-950 font-arcade text-[11px] font-black tracking-wide cursor-pointer flex items-center gap-1 shadow-md disabled:opacity-50"
-            >
-              <Coins className="w-3.5 h-3.5 text-slate-950" />
-              <span>SOL FAUCET</span>
-            </button>
-          )}
-        </div>
-
-        {/* Right Controls Cluster */}
-        <div className="flex flex-wrap items-center justify-end gap-2 pointer-events-auto">
-          <div className="hud-glass rounded-2xl p-1 flex items-center gap-1">
-            {(["hero", "front", "side", "orbit"] as const).map((mode, idx) => (
-              <button
-                key={mode}
-                onClick={() => setActiveCamMode(mode)}
-                className={`cam-pill rounded-xl px-2.5 py-1.5 text-[11px] font-bold cursor-pointer ${
-                  activeCamMode === mode ? "active" : "text-slate-300"
-                }`}
-              >
-                {idx + 1} {mode.charAt(0).toUpperCase() + mode.slice(1)}
-              </button>
-            ))}
-          </div>
-
-          <button
-            onClick={() => setIsOddsModalOpen(true)}
-            className="hud-glass rounded-2xl px-3 py-2 text-xs font-arcade font-bold text-amber-200 hover:text-white cursor-pointer flex items-center gap-1.5 shadow-lg hover:border-pink-400/40"
-          >
-            <Shield className="w-3.5 h-3.5 text-pink-400" />
-            <span className="hidden sm:inline">
-              PRIZES ({machineConfig ? machineConfig.slots.filter((s) => s.inStock).length : 0}) &amp; ODDS
-            </span>
-            <span className="sm:hidden">
-              PRIZES ({machineConfig ? machineConfig.slots.filter((s) => s.inStock).length : 0})
-            </span>
-          </button>
-
-          <button
-            onClick={() => {
-              arcadeAudio.init();
-              setPowerReplayCount((c) => c + 1);
-            }}
-            title="Replay Lights Power-On Intro (Key: P)"
-            className="cam-pill hud-glass rounded-2xl px-2.5 py-2 text-[11px] font-bold cursor-pointer flex items-center gap-1 text-amber-200 hover:text-amber-100"
-          >
-            <span>⚡</span>
-            <span className="hidden sm:inline">Power On</span>
-          </button>
-
-          <div className="wallet-adapter-wrapper min-w-[130px] flex justify-end">
-            {mounted ? (
-              <WalletMultiButton className="!bg-gradient-to-r !from-indigo-600 !to-purple-600 !rounded-2xl !h-9 !py-0 !px-3 !text-xs !font-arcade !font-bold !shadow-lg" />
-            ) : (
-              <button className="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-2xl h-9 px-3 text-xs font-arcade font-bold shadow-lg text-white opacity-80">
-                CONNECT WALLET
-              </button>
-            )}
-          </div>
-
-          <button
-            onClick={toggleMute}
-            className="hud-glass rounded-2xl p-2 text-slate-300 hover:text-white cursor-pointer"
-            title={isMuted ? "Unmute Audio" : "Mute Audio"}
-          >
-            {isMuted ? (
-              <VolumeX className="w-4 h-4 text-rose-400" />
-            ) : (
-              <Volume2 className="w-4 h-4 text-emerald-400" />
-            )}
-          </button>
-        </div>
-      </header>
-
-      {/* Dynamic Toast Alert */}
-      {toastMessage && (
-        <div className="fixed top-18 sm:top-20 left-1/2 -translate-x-1/2 z-40 pointer-events-none animate-bounce">
-          <div className="hud-glass rounded-2xl px-4 py-2.5 flex items-center gap-3 border border-cyan-400/40 shadow-2xl max-w-[90vw]">
-            <span className="text-xl">{toastMessage.icon}</span>
-            <div className="flex flex-col leading-tight">
-              <span className="font-arcade text-xs sm:text-sm font-extrabold text-white">
-                {toastMessage.title}
-              </span>
-              <span className="text-[11px] text-slate-300">{toastMessage.sub}</span>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Onboarding Gate Banner when wallet not connected or session not active */}
-      {!isBootHudHidden && !canPlayTurn && (
-        <div className="relative z-20 mx-auto pointer-events-auto">
-          <div className="hud-glass rounded-2xl px-4 py-2.5 border border-amber-500/40 text-xs font-mono text-amber-200 flex items-center gap-2.5 shadow-xl">
-            <span>
-              {!connected
-                ? "🔒 Connect your Solana Devnet wallet (top right) to play and win real tokens & NFTs."
-                : !isOnchainActive
-                ? "⚡ Click AIRDROP $10 → SESSION in the top bar to fund & start your gasless ER session."
-                : "🪙 Session balance is $0.00. Click REFILL $10 → SESSION in the top bar to top up!"}
-            </span>
-          </div>
-        </div>
-      )}
-
-      {/* Bottom Floating Thumb Control Deck */}
-      <footer
-        className={`hud-footer-anim ${
-          isBootHudHidden ? "hud-boot-hidden" : ""
-        } relative z-20 p-3 sm:p-5 flex flex-col gap-2.5 pointer-events-none`}
-      >
-        <div className="flex items-end justify-between sm:justify-center sm:gap-10">
-          <div className="hud-glass rounded-3xl p-2 sm:p-2.5 flex items-center gap-3.5 pointer-events-auto shadow-2xl">
-            <VirtualJoystick
-              onMove={setVirtualJoyVector}
-              disabled={
-                !canPlayTurn ||
-                gameStateText === "DROPPING" ||
-                gameStateText === "GRABBING" ||
-                gameStateText === "LIFTING" ||
-                gameStateText === "RETURNING"
-              }
-            />
-
-            <div className="hidden sm:flex flex-col gap-1 pr-2 min-w-[165px]">
-              <div className="flex items-center gap-2">
-                <span
-                  className={`w-2.5 h-2.5 rounded-full ${
-                    canPlayTurn
-                      ? "bg-emerald-400 shadow-[0_0_8px_#34d399]"
-                      : "bg-amber-400 shadow-[0_0_8px_#fbbf24]"
-                  }`}
-                />
-                <span className="font-arcade text-[11px] font-extrabold tracking-wider text-lime-200">
-                  {gameStateText}
-                </span>
-              </div>
-              <div className="text-[10px] text-slate-400 leading-relaxed">
-                <div>
-                  <strong className="text-slate-200">WASD / Arrows</strong> Move Claw
-                </div>
-                <div>
-                  <strong className="text-slate-200">Space / Enter</strong> Drop Claw
-                </div>
-                <div>
-                  <strong className="text-slate-200">1–4</strong> Cam •{" "}
-                  <strong className="text-slate-200">P</strong> Intro
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="hud-glass rounded-3xl p-2.5 flex items-center justify-center pointer-events-auto shadow-2xl">
-            <button
-              onClick={triggerDropBtn}
-              title="Drop Claw (Space / Enter)"
-              className="emerald-drop-btn cursor-pointer"
-            >
-              <div className="emerald-drop-cap">
-                <span className="font-arcade font-black text-xs sm:text-sm tracking-wider leading-none">
-                  DROP
-                </span>
-                <span className="text-[8px] font-extrabold tracking-widest opacity-80 mt-0.5">
-                  ${playFeeUsd.toFixed(2)}
-                </span>
-              </div>
-            </button>
-          </div>
-        </div>
-
-        <div className="pointer-events-auto flex justify-center">
-          <TelemetryHUD
-            erLatencyMs={erLatencyMs}
-            isDelegated={Boolean(machineConfig?.isDelegated)}
-            vrfStatus={vrfStatus}
-            pythStatus="Live"
-            lastTxSignature={lastSignature}
-          />
-        </div>
-      </footer>
+      <TicketsModal
+        isOpen={isTicketsModalOpen}
+        onClose={() => setIsTicketsModalOpen(false)}
+        connected={connected}
+        isOnchainActive={isOnchainActive}
+        ticketBalance={ticketBalance}
+        walletUsdcBalance={walletUsdcBalance}
+        playFeeUsd={playFeeUsd}
+        faucetLoading={faucetLoading}
+        onboardingLoading={onboardingLoading}
+        onBuyTickets={handleBuyTickets}
+        onAirdropUsdc={handleAirdropTestUsdc}
+        onWithdrawTickets={handleWithdrawUsdc}
+        onSolFaucet={handleSolFaucet}
+      />
 
       <PostWinModal
         prize={wonPrize}
@@ -1102,7 +1089,13 @@ export default function ClawVaultPage() {
         pendingClaimOnly={isPendingClaimOnly}
         onClose={() => {
           setIsWinModalOpen(false);
-          setGameStateText(canPlayTurn ? "READY" : "DEPOSIT TO PLAY");
+          setGameStateText(
+            hasPendingPrize
+              ? "CLAIM PRIZE!"
+              : canPlayTurn
+              ? "READY"
+              : "DEPOSIT TO PLAY"
+          );
         }}
         onSellBack={handleSellBackPrize}
         onClaimToWallet={handleClaimPrize}
