@@ -1,0 +1,2875 @@
+{
+  "address": "9MPCK9ic71C2pdoTYMz91CSpYppiuVKMTTNWoTKgv3MW",
+  "metadata": {
+    "name": "magiclaw",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Created with Anchor"
+  },
+  "instructions": [
+    {
+      "name": "cancel_stuck_vrf",
+      "discriminator": [
+        151,
+        124,
+        231,
+        151,
+        116,
+        101,
+        140,
+        37
+      ],
+      "accounts": [
+        {
+          "name": "signer",
+          "signer": true
+        },
+        {
+          "name": "machine_config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  99,
+                  104,
+                  105,
+                  110,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "machine_config.machine_id",
+                "account": "MachineConfig"
+              }
+            ]
+          }
+        },
+        {
+          "name": "player_session",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "machine_config"
+              },
+              {
+                "kind": "account",
+                "path": "player_session.owner",
+                "account": "PlayerSession"
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "claim_prize",
+      "discriminator": [
+        157,
+        233,
+        139,
+        121,
+        246,
+        62,
+        234,
+        235
+      ],
+      "accounts": [
+        {
+          "name": "signer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "machine_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  99,
+                  104,
+                  105,
+                  110,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "machine_config.machine_id",
+                "account": "MachineConfig"
+              }
+            ]
+          }
+        },
+        {
+          "name": "player_session",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "machine_config"
+              },
+              {
+                "kind": "account",
+                "path": "player_session.owner",
+                "account": "PlayerSession"
+              }
+            ]
+          }
+        },
+        {
+          "name": "player_ledger"
+        },
+        {
+          "name": "vault_authority"
+        },
+        {
+          "name": "prize_vault_ata"
+        },
+        {
+          "name": "owner_prize_ata"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "magic_program",
+          "address": "Magic11111111111111111111111111111111111111"
+        },
+        {
+          "name": "magic_context",
+          "writable": true,
+          "address": "MagicContext1111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "consume_vrf_grip",
+      "docs": [
+        "VRF callback. Only the scoped VRF program identity can sign this."
+      ],
+      "discriminator": [
+        252,
+        56,
+        85,
+        147,
+        145,
+        185,
+        64,
+        140
+      ],
+      "accounts": [
+        {
+          "name": "vrf_program_identity",
+          "signer": true,
+          "address": "42YUir2U1jcjmKWcJyxbuC7xyL4zp8f24fykYS28Y2Nb"
+        },
+        {
+          "name": "machine_config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  99,
+                  104,
+                  105,
+                  110,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "machine_config.machine_id",
+                "account": "MachineConfig"
+              }
+            ]
+          }
+        },
+        {
+          "name": "player_session",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "machine_config"
+              },
+              {
+                "kind": "account",
+                "path": "player_session.owner",
+                "account": "PlayerSession"
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "randomness",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "request_nonce",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "delegate_machine",
+      "discriminator": [
+        201,
+        113,
+        190,
+        89,
+        83,
+        131,
+        32,
+        159
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "buffer_machine_config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  117,
+                  102,
+                  102,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "machine_config"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                124,
+                22,
+                53,
+                38,
+                83,
+                156,
+                241,
+                4,
+                239,
+                156,
+                192,
+                72,
+                49,
+                109,
+                150,
+                64,
+                183,
+                91,
+                221,
+                89,
+                132,
+                3,
+                128,
+                194,
+                92,
+                155,
+                204,
+                112,
+                21,
+                110,
+                8,
+                101
+              ]
+            }
+          }
+        },
+        {
+          "name": "delegation_record_machine_config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "machine_config"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "delegation_metadata_machine_config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110,
+                  45,
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "machine_config"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "machine_config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  99,
+                  104,
+                  105,
+                  110,
+                  101
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "machine_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "owner_program",
+          "address": "9MPCK9ic71C2pdoTYMz91CSpYppiuVKMTTNWoTKgv3MW"
+        },
+        {
+          "name": "delegation_program",
+          "address": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "machine_id",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "delegate_session",
+      "discriminator": [
+        82,
+        83,
+        119,
+        119,
+        196,
+        219,
+        5,
+        197
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "machine_config"
+        },
+        {
+          "name": "buffer_player_session",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  117,
+                  102,
+                  102,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "player_session"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                124,
+                22,
+                53,
+                38,
+                83,
+                156,
+                241,
+                4,
+                239,
+                156,
+                192,
+                72,
+                49,
+                109,
+                150,
+                64,
+                183,
+                91,
+                221,
+                89,
+                132,
+                3,
+                128,
+                194,
+                92,
+                155,
+                204,
+                112,
+                21,
+                110,
+                8,
+                101
+              ]
+            }
+          }
+        },
+        {
+          "name": "delegation_record_player_session",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "player_session"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "delegation_metadata_player_session",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110,
+                  45,
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "player_session"
+              }
+            ],
+            "program": {
+              "kind": "account",
+              "path": "delegation_program"
+            }
+          }
+        },
+        {
+          "name": "player_session",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "machine_config"
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "owner_program",
+          "address": "9MPCK9ic71C2pdoTYMz91CSpYppiuVKMTTNWoTKgv3MW"
+        },
+        {
+          "name": "delegation_program",
+          "address": "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "drop_claw",
+      "discriminator": [
+        176,
+        101,
+        112,
+        189,
+        15,
+        40,
+        96,
+        244
+      ],
+      "accounts": [
+        {
+          "name": "signer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "machine_config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  99,
+                  104,
+                  105,
+                  110,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "machine_config.machine_id",
+                "account": "MachineConfig"
+              }
+            ]
+          }
+        },
+        {
+          "name": "player_session",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "machine_config"
+              },
+              {
+                "kind": "account",
+                "path": "player_session.owner",
+                "account": "PlayerSession"
+              }
+            ]
+          }
+        },
+        {
+          "name": "oracle_queue",
+          "writable": true
+        },
+        {
+          "name": "program_identity",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  105,
+                  100,
+                  101,
+                  110,
+                  116,
+                  105,
+                  116,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "vrf_program",
+          "address": "Vrf1RNUjXmQGjmQrQLvJHs9SNkvDJEsRVFPkfSQUwGz"
+        },
+        {
+          "name": "slot_hashes",
+          "address": "SysvarS1otHashes111111111111111111111111111"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "client_seed",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "execute_l1_prize_claim",
+      "docs": [
+        "Permissionless L1 settlement for a committed claim intent."
+      ],
+      "discriminator": [
+        180,
+        218,
+        166,
+        112,
+        103,
+        118,
+        2,
+        210
+      ],
+      "accounts": [
+        {
+          "name": "machine_config"
+        },
+        {
+          "name": "player_session"
+        },
+        {
+          "name": "player_ledger",
+          "writable": true
+        },
+        {
+          "name": "vault_authority"
+        },
+        {
+          "name": "prize_vault_ata",
+          "writable": true
+        },
+        {
+          "name": "owner_prize_ata",
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "execute_l1_usdc_withdraw",
+      "docs": [
+        "Permissionless L1 settlement for a committed withdrawal intent."
+      ],
+      "discriminator": [
+        48,
+        134,
+        32,
+        123,
+        133,
+        138,
+        144,
+        169
+      ],
+      "accounts": [
+        {
+          "name": "machine_config"
+        },
+        {
+          "name": "player_session"
+        },
+        {
+          "name": "player_ledger",
+          "writable": true
+        },
+        {
+          "name": "vault_authority"
+        },
+        {
+          "name": "usdc_vault",
+          "writable": true
+        },
+        {
+          "name": "owner_usdc_ata",
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "fund_usdc_liquidity",
+      "discriminator": [
+        162,
+        80,
+        182,
+        67,
+        75,
+        180,
+        229,
+        90
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "machine_config"
+          ]
+        },
+        {
+          "name": "machine_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  99,
+                  104,
+                  105,
+                  110,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "machine_config.machine_id",
+                "account": "MachineConfig"
+              }
+            ]
+          }
+        },
+        {
+          "name": "admin_usdc_ata",
+          "writable": true
+        },
+        {
+          "name": "usdc_vault",
+          "writable": true
+        },
+        {
+          "name": "vault_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "machine_config"
+              }
+            ]
+          }
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount_usdc",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "init_and_deposit_session",
+      "discriminator": [
+        215,
+        165,
+        221,
+        68,
+        10,
+        120,
+        100,
+        36
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "machine_config",
+          "docs": [
+            "The handler re-derives and validates the machine address from `machine_id`."
+          ]
+        },
+        {
+          "name": "player_session",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "machine_config"
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "player_ledger",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  101,
+                  100,
+                  103,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "machine_config"
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "owner_usdc_ata",
+          "writable": true
+        },
+        {
+          "name": "usdc_vault",
+          "writable": true
+        },
+        {
+          "name": "vault_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "machine_config"
+              }
+            ]
+          }
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "deposit_usdc",
+          "type": "u64"
+        },
+        {
+          "name": "session_key",
+          "type": "pubkey"
+        },
+        {
+          "name": "session_duration_secs",
+          "type": "i64"
+        }
+      ]
+    },
+    {
+      "name": "initialize_machine",
+      "discriminator": [
+        61,
+        88,
+        18,
+        21,
+        148,
+        196,
+        155,
+        32
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "machine_config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  99,
+                  104,
+                  105,
+                  110,
+                  101
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "machine_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "usdc_mint"
+        },
+        {
+          "name": "vault_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "machine_config"
+              }
+            ]
+          }
+        },
+        {
+          "name": "usdc_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "vault_authority"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "usdc_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "machine_id",
+          "type": "u64"
+        },
+        {
+          "name": "play_fee_usdc",
+          "type": "u64"
+        },
+        {
+          "name": "grip_bps",
+          "type": {
+            "array": [
+              "u16",
+              4
+            ]
+          }
+        },
+        {
+          "name": "buyback_bps",
+          "type": {
+            "array": [
+              "u16",
+              4
+            ]
+          }
+        },
+        {
+          "name": "bullseye_bonus_bps",
+          "type": "u16"
+        },
+        {
+          "name": "capture_radius",
+          "type": "u16"
+        },
+        {
+          "name": "bullseye_radius",
+          "type": "u16"
+        },
+        {
+          "name": "play_duration_secs",
+          "type": "i64"
+        }
+      ]
+    },
+    {
+      "name": "process_undelegation",
+      "discriminator": [
+        196,
+        28,
+        41,
+        206,
+        48,
+        37,
+        51,
+        167
+      ],
+      "accounts": [
+        {
+          "name": "base_account",
+          "writable": true
+        },
+        {
+          "name": "buffer",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  117,
+                  110,
+                  100,
+                  101,
+                  108,
+                  101,
+                  103,
+                  97,
+                  116,
+                  101,
+                  45,
+                  98,
+                  117,
+                  102,
+                  102,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "base_account"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                181,
+                183,
+                0,
+                225,
+                242,
+                87,
+                58,
+                192,
+                204,
+                6,
+                34,
+                1,
+                52,
+                74,
+                207,
+                151,
+                184,
+                53,
+                6,
+                235,
+                140,
+                229,
+                25,
+                152,
+                204,
+                98,
+                126,
+                24,
+                147,
+                128,
+                167,
+                62
+              ]
+            }
+          }
+        },
+        {
+          "name": "payer",
+          "writable": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "account_seeds",
+          "type": {
+            "vec": "bytes"
+          }
+        }
+      ]
+    },
+    {
+      "name": "request_withdraw_and_undelegate",
+      "discriminator": [
+        159,
+        154,
+        91,
+        237,
+        43,
+        133,
+        226,
+        184
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "player_session",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "player_session.machine",
+                "account": "PlayerSession"
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "machine_config"
+        },
+        {
+          "name": "player_ledger"
+        },
+        {
+          "name": "vault_authority"
+        },
+        {
+          "name": "usdc_vault"
+        },
+        {
+          "name": "owner_usdc_ata"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "magic_program",
+          "address": "Magic11111111111111111111111111111111111111"
+        },
+        {
+          "name": "magic_context",
+          "writable": true,
+          "address": "MagicContext1111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount_usdc",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "sell_back_prize",
+      "discriminator": [
+        162,
+        253,
+        109,
+        103,
+        89,
+        66,
+        132,
+        21
+      ],
+      "accounts": [
+        {
+          "name": "signer",
+          "signer": true
+        },
+        {
+          "name": "machine_config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  99,
+                  104,
+                  105,
+                  110,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "machine_config.machine_id",
+                "account": "MachineConfig"
+              }
+            ]
+          }
+        },
+        {
+          "name": "player_session",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "machine_config"
+              },
+              {
+                "kind": "account",
+                "path": "player_session.owner",
+                "account": "PlayerSession"
+              }
+            ]
+          }
+        },
+        {
+          "name": "price_feed",
+          "optional": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "start_play",
+      "discriminator": [
+        14,
+        135,
+        114,
+        204,
+        136,
+        215,
+        67,
+        129
+      ],
+      "accounts": [
+        {
+          "name": "signer",
+          "signer": true
+        },
+        {
+          "name": "machine_config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  99,
+                  104,
+                  105,
+                  110,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "machine_config.machine_id",
+                "account": "MachineConfig"
+              }
+            ]
+          }
+        },
+        {
+          "name": "player_session",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "machine_config"
+              },
+              {
+                "kind": "account",
+                "path": "player_session.owner",
+                "account": "PlayerSession"
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "steer_claw",
+      "discriminator": [
+        72,
+        8,
+        196,
+        126,
+        244,
+        6,
+        153,
+        44
+      ],
+      "accounts": [
+        {
+          "name": "signer",
+          "signer": true
+        },
+        {
+          "name": "player_session",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  115,
+                  101,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "player_session.machine",
+                "account": "PlayerSession"
+              },
+              {
+                "kind": "account",
+                "path": "player_session.owner",
+                "account": "PlayerSession"
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "dx",
+          "type": "i16"
+        },
+        {
+          "name": "dz",
+          "type": "i16"
+        }
+      ]
+    },
+    {
+      "name": "stock_prize_slot",
+      "discriminator": [
+        22,
+        45,
+        80,
+        186,
+        134,
+        232,
+        233,
+        244
+      ],
+      "accounts": [
+        {
+          "name": "admin",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "machine_config"
+          ]
+        },
+        {
+          "name": "machine_config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  97,
+                  99,
+                  104,
+                  105,
+                  110,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "machine_config.machine_id",
+                "account": "MachineConfig"
+              }
+            ]
+          }
+        },
+        {
+          "name": "prize_mint"
+        },
+        {
+          "name": "admin_prize_ata",
+          "writable": true
+        },
+        {
+          "name": "vault_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "machine_config"
+              }
+            ]
+          }
+        },
+        {
+          "name": "prize_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "vault_authority"
+              },
+              {
+                "kind": "const",
+                "value": [
+                  6,
+                  221,
+                  246,
+                  225,
+                  215,
+                  101,
+                  161,
+                  147,
+                  217,
+                  203,
+                  225,
+                  70,
+                  206,
+                  235,
+                  121,
+                  172,
+                  28,
+                  180,
+                  133,
+                  237,
+                  95,
+                  91,
+                  55,
+                  145,
+                  58,
+                  140,
+                  245,
+                  133,
+                  126,
+                  255,
+                  0,
+                  169
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "prize_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "slot_id",
+          "type": "u8"
+        },
+        {
+          "name": "tier",
+          "type": "u8"
+        },
+        {
+          "name": "x",
+          "type": "u16"
+        },
+        {
+          "name": "z",
+          "type": "u16"
+        },
+        {
+          "name": "prize_amount",
+          "type": "u64"
+        },
+        {
+          "name": "price_feed",
+          "type": "pubkey"
+        },
+        {
+          "name": "fallback_buyback_usdc",
+          "type": "u64"
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "MachineConfig",
+      "discriminator": [
+        130,
+        229,
+        95,
+        212,
+        19,
+        205,
+        94,
+        8
+      ]
+    },
+    {
+      "name": "PlayerLedger",
+      "discriminator": [
+        216,
+        224,
+        218,
+        1,
+        67,
+        118,
+        105,
+        213
+      ]
+    },
+    {
+      "name": "PlayerSession",
+      "discriminator": [
+        89,
+        95,
+        51,
+        45,
+        127,
+        42,
+        173,
+        223
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "ClawDropped",
+      "discriminator": [
+        114,
+        232,
+        210,
+        189,
+        69,
+        182,
+        18,
+        38
+      ]
+    },
+    {
+      "name": "ClawMoved",
+      "discriminator": [
+        163,
+        31,
+        245,
+        251,
+        0,
+        254,
+        40,
+        70
+      ]
+    },
+    {
+      "name": "GripResolved",
+      "discriminator": [
+        246,
+        87,
+        50,
+        30,
+        95,
+        144,
+        22,
+        236
+      ]
+    },
+    {
+      "name": "MachineInitialized",
+      "discriminator": [
+        63,
+        178,
+        124,
+        255,
+        64,
+        232,
+        180,
+        186
+      ]
+    },
+    {
+      "name": "PlayStarted",
+      "discriminator": [
+        138,
+        67,
+        96,
+        249,
+        138,
+        180,
+        239,
+        45
+      ]
+    },
+    {
+      "name": "PrizeClaimRequested",
+      "discriminator": [
+        60,
+        90,
+        121,
+        130,
+        87,
+        221,
+        205,
+        245
+      ]
+    },
+    {
+      "name": "PrizeClaimSettledL1",
+      "discriminator": [
+        24,
+        44,
+        74,
+        244,
+        0,
+        49,
+        71,
+        189
+      ]
+    },
+    {
+      "name": "PrizeSlotStocked",
+      "discriminator": [
+        251,
+        206,
+        215,
+        229,
+        199,
+        28,
+        108,
+        42
+      ]
+    },
+    {
+      "name": "PrizeSoldBack",
+      "discriminator": [
+        71,
+        71,
+        128,
+        246,
+        26,
+        34,
+        82,
+        21
+      ]
+    },
+    {
+      "name": "UsdcWithdrawnL1",
+      "discriminator": [
+        221,
+        214,
+        128,
+        73,
+        203,
+        87,
+        174,
+        105
+      ]
+    },
+    {
+      "name": "VrfRequestCancelled",
+      "discriminator": [
+        97,
+        148,
+        183,
+        143,
+        70,
+        234,
+        86,
+        72
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "InvalidConfig",
+      "msg": "Invalid odds, radius, fee, or timing parameter"
+    },
+    {
+      "code": 6001,
+      "name": "Unauthorized",
+      "msg": "Signer is neither the admin, the owner, nor a valid session key"
+    },
+    {
+      "code": 6002,
+      "name": "SessionKeyExpired",
+      "msg": "Session key has expired"
+    },
+    {
+      "code": 6003,
+      "name": "InvalidState",
+      "msg": "Instruction called from a disallowed session state"
+    },
+    {
+      "code": 6004,
+      "name": "InsufficientBalance",
+      "msg": "USDC balance is insufficient"
+    },
+    {
+      "code": 6005,
+      "name": "PlayWindowExpired",
+      "msg": "The play window has expired"
+    },
+    {
+      "code": 6006,
+      "name": "InvalidSlot",
+      "msg": "Slot id or coordinates are out of bounds"
+    },
+    {
+      "code": 6007,
+      "name": "UnauthorizedVrfCallback",
+      "msg": "VRF callback signer is not the scoped program identity"
+    },
+    {
+      "code": 6008,
+      "name": "InvalidPriceFeed",
+      "msg": "The supplied price feed does not match the slot configuration"
+    },
+    {
+      "code": 6009,
+      "name": "NothingToSettle",
+      "msg": "Nothing to settle: nonce already consumed or zero delta"
+    },
+    {
+      "code": 6010,
+      "name": "MathOverflow",
+      "msg": "Checked arithmetic overflow"
+    },
+    {
+      "code": 6011,
+      "name": "InvalidOracleAccount",
+      "msg": "The oracle account cannot be decoded"
+    },
+    {
+      "code": 6012,
+      "name": "VrfStillLive",
+      "msg": "The VRF request is not yet eligible for cancellation"
+    },
+    {
+      "code": 6013,
+      "name": "InvalidVault",
+      "msg": "The vault account does not match the machine configuration"
+    }
+  ],
+  "types": [
+    {
+      "name": "ClawDropped",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "claw_x",
+            "type": "u16"
+          },
+          {
+            "name": "claw_z",
+            "type": "u16"
+          },
+          {
+            "name": "hit_slot",
+            "type": {
+              "option": "u8"
+            }
+          },
+          {
+            "name": "is_bullseye",
+            "type": "bool"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ClawMoved",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "claw_x",
+            "type": "u16"
+          },
+          {
+            "name": "claw_z",
+            "type": "u16"
+          }
+        ]
+      }
+    },
+    {
+      "name": "GripResolved",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "slot_id",
+            "type": "u8"
+          },
+          {
+            "name": "won",
+            "type": "bool"
+          },
+          {
+            "name": "roll",
+            "type": "u16"
+          },
+          {
+            "name": "effective_bps",
+            "type": "u16"
+          }
+        ]
+      }
+    },
+    {
+      "name": "LastOutcome",
+      "docs": [
+        "Outcome of the most recently completed round."
+      ],
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "None"
+          },
+          {
+            "name": "Miss"
+          },
+          {
+            "name": "Slipped"
+          },
+          {
+            "name": "Won"
+          },
+          {
+            "name": "SoldBack"
+          },
+          {
+            "name": "Claimed"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MachineConfig",
+      "docs": [
+        "Public cabinet configuration and prize inventory.",
+        "",
+        "Delegated to the ER after setup so gameplay can mutate odds counters and slot",
+        "inventory at ER speed. The layout is fixed (no realloc) so any external client",
+        "can deserialize the public odds directly onchain."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "machine_id",
+            "type": "u64"
+          },
+          {
+            "name": "admin",
+            "type": "pubkey"
+          },
+          {
+            "name": "usdc_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "play_fee_usdc",
+            "docs": [
+              "Play fee in USDC base units (6 decimals)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "grip_bps",
+            "docs": [
+              "Public grip odds by tier."
+            ],
+            "type": {
+              "array": [
+                "u16",
+                4
+              ]
+            }
+          },
+          {
+            "name": "buyback_bps",
+            "docs": [
+              "Sell-back percentage by tier."
+            ],
+            "type": {
+              "array": [
+                "u16",
+                4
+              ]
+            }
+          },
+          {
+            "name": "bullseye_bonus_bps",
+            "docs": [
+              "Dead-centre skill bonus, in bps."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "capture_radius",
+            "type": "u16"
+          },
+          {
+            "name": "bullseye_radius",
+            "type": "u16"
+          },
+          {
+            "name": "play_duration_secs",
+            "type": "i64"
+          },
+          {
+            "name": "total_plays",
+            "type": "u64"
+          },
+          {
+            "name": "total_wins",
+            "type": "u64"
+          },
+          {
+            "name": "slots",
+            "type": {
+              "array": [
+                {
+                  "defined": {
+                    "name": "PrizeSlot"
+                  }
+                },
+                16
+              ]
+            }
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MachineInitialized",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "machine",
+            "type": "pubkey"
+          },
+          {
+            "name": "admin",
+            "type": "pubkey"
+          },
+          {
+            "name": "play_fee_usdc",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PlayStarted",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "machine",
+            "type": "pubkey"
+          },
+          {
+            "name": "play_expires_at",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PlayerLedger",
+      "docs": [
+        "Replay-proof settlement ledger. L1 only: never delegated."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "machine",
+            "type": "pubkey"
+          },
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "total_deposited_usdc",
+            "type": "u64"
+          },
+          {
+            "name": "total_withdrawn_usdc",
+            "type": "u64"
+          },
+          {
+            "name": "last_claimed_nonce",
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PlayerSession",
+      "docs": [
+        "A player's live ER session."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "machine",
+            "type": "pubkey"
+          },
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "session_key",
+            "docs": [
+              "Ephemeral key authorized for gasless ER play."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "session_expiry",
+            "docs": [
+              "Unix timestamp at which `session_key` stops working."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "usdc_balance",
+            "docs": [
+              "Spendable ER play balance, USDC base units."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "cumulative_deposited_usdc",
+            "docs": [
+              "Monotonic total deposited through the L1 ledger."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "cumulative_withdrawn_usdc",
+            "docs": [
+              "Monotonic withdrawal intents settled by the L1 ledger."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "claw_x",
+            "type": "u16"
+          },
+          {
+            "name": "claw_z",
+            "type": "u16"
+          },
+          {
+            "name": "state",
+            "type": {
+              "defined": {
+                "name": "SessionState"
+              }
+            }
+          },
+          {
+            "name": "play_expires_at",
+            "type": "i64"
+          },
+          {
+            "name": "target_slot",
+            "docs": [
+              "Active slot during `AwaitingVrf` / `WonPendingChoice`."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "is_bullseye",
+            "docs": [
+              "Cached at drop time so the VRF callback can apply the skill bonus."
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "last_vrf_roll",
+            "docs": [
+              "Last roll in `0..9_999`, exposed for UI / proof transparency."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "last_outcome",
+            "type": {
+              "defined": {
+                "name": "LastOutcome"
+              }
+            }
+          },
+          {
+            "name": "claim_nonce",
+            "docs": [
+              "Incremented on every claim request; the L1 ledger consumes it once."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "pending_claim_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "pending_claim_amount",
+            "type": "u64"
+          },
+          {
+            "name": "vrf_request_nonce",
+            "docs": [
+              "Monotonic id of the most recent VRF request. Forwarded as callback args so",
+              "a late fulfillment for a superseded request cannot settle a newer round."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "plays_count",
+            "type": "u64"
+          },
+          {
+            "name": "wins_count",
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PrizeClaimRequested",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "slot_id",
+            "type": "u8"
+          },
+          {
+            "name": "claim_nonce",
+            "type": "u64"
+          },
+          {
+            "name": "mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PrizeClaimSettledL1",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "claim_nonce",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PrizeSlot",
+      "docs": [
+        "A physical capsule inside the cabinet."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "slot_id",
+            "docs": [
+              "0..15"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "tier",
+            "docs": [
+              "0 = Common, 1 = Rare, 2 = Epic, 3 = Grail"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "x",
+            "docs": [
+              "0..=1000"
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "z",
+            "docs": [
+              "0..=1000"
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "prize_mint",
+            "docs": [
+              "SPL token / NFT mint held in the PrizeVault ATA."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "prize_amount",
+            "docs": [
+              "Base units transferred on claim."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "prize_decimals",
+            "docs": [
+              "Mint decimals, used to scale oracle prices."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "price_feed",
+            "docs": [
+              "Oracle price account. `Pubkey::default()` means \"use the fixed floor\"."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "fallback_buyback_usdc",
+            "docs": [
+              "Floor sell-back value in USDC base units (6 decimals)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "in_stock",
+            "docs": [
+              "True while a capsule is physically available."
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "reserved",
+            "docs": [
+              "True while a VRF grip roll is in flight for this slot."
+            ],
+            "type": "bool"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PrizeSlotStocked",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "machine",
+            "type": "pubkey"
+          },
+          {
+            "name": "slot_id",
+            "type": "u8"
+          },
+          {
+            "name": "tier",
+            "type": "u8"
+          },
+          {
+            "name": "prize_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "prize_amount",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PrizeSoldBack",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "slot_id",
+            "type": "u8"
+          },
+          {
+            "name": "buyback_usdc",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "SessionState",
+      "docs": [
+        "Lifecycle of a player's current round."
+      ],
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Idle"
+          },
+          {
+            "name": "Steering"
+          },
+          {
+            "name": "AwaitingVrf"
+          },
+          {
+            "name": "WonPendingChoice"
+          }
+        ]
+      }
+    },
+    {
+      "name": "UsdcWithdrawnL1",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "VrfRequestCancelled",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "slot_id",
+            "type": "u8"
+          },
+          {
+            "name": "refund_usdc",
+            "type": "u64"
+          }
+        ]
+      }
+    }
+  ]
+}
