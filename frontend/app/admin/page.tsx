@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { PublicKey, Transaction } from "@solana/web3.js";
@@ -25,13 +25,14 @@ import {
   PRIZE_TIERS,
 } from "../../lib/constants";
 import { getMachinePda, getVaultAuthorityPda } from "../../lib/pda";
-import { baseConnection, getDefaultPrizeSlots } from "../../lib/solana";
+import { baseConnection, confirmTx, erConnection, getDefaultPrizeSlots } from "../../lib/solana";
 import {
   WalletTokenInfo,
   createDelegateMachineIx,
   createFundUsdcLiquidityIx,
   createInitializeMachineIx,
   createStockPrizeSlotIx,
+  createUndelegateMachineIx,
   fetchOnchainMachineConfig,
   fetchTokenBalance,
   fetchWalletTokenAccounts,
@@ -55,7 +56,7 @@ function toBaseUnits(amountStr: string, decimals: number): bigint {
 }
 
 export default function AdminMachinePage() {
-  const { publicKey, sendTransaction } = useWallet();
+  const { publicKey, sendTransaction, signTransaction } = useWallet();
 
   const [machineId] = useState<bigint>(MACHINE_ID);
   const [machine, setMachine] = useState<MachineConfigData | null>(null);
@@ -81,7 +82,15 @@ export default function AdminMachinePage() {
   const [fundUsdcInput, setFundUsdcInput] = useState("250");
 
   // Stock Slot Form
-  const defaultLayout = getDefaultPrizeSlots(getMachinePda(machineId)[0]);
+  const [machinePda] = useMemo(() => getMachinePda(machineId), [machineId]);
+  const [vaultAuthorityPda] = useMemo(
+    () => getVaultAuthorityPda(machinePda),
+    [machinePda]
+  );
+  const defaultLayout = useMemo(
+    () => getDefaultPrizeSlots(machinePda),
+    [machinePda]
+  );
   const [selectedSlotId, setSelectedSlotId] = useState(0);
   const [slotMintInput, setSlotMintInput] = useState("");
   const [slotAmountInput, setSlotAmountInput] = useState("10");
@@ -93,8 +102,7 @@ export default function AdminMachinePage() {
     PublicKey.default.toBase58()
   );
 
-  const [machinePda] = getMachinePda(machineId);
-  const [vaultAuthorityPda] = getVaultAuthorityPda(machinePda);
+  const publicKeyBase58 = publicKey?.toBase58() ?? null;
 
   const refreshAll = useCallback(async () => {
     setLoading(true);
@@ -112,24 +120,26 @@ export default function AdminMachinePage() {
         setVaultUsdcBalance(BigInt(0));
       }
 
-      if (publicKey) {
-        const tokens = await fetchWalletTokenAccounts(publicKey);
+      if (publicKeyBase58) {
+        const ownerPk = new PublicKey(publicKeyBase58);
+        const tokens = await fetchWalletTokenAccounts(ownerPk);
         setWalletTokens(tokens);
-        // Auto-select first 6-decimal token as USDC candidate if not initialized
         if (!cfg) {
           const sixDec = tokens.find((t) => t.decimals === 6);
           if (sixDec) setUsdcMintInput(sixDec.mint);
         }
-        if (!slotMintInput && tokens.length > 0) {
-          setSlotMintInput(tokens[0].mint);
+        if (tokens.length > 0) {
+          setSlotMintInput((prev) => prev || tokens[0].mint);
         }
+      } else {
+        setWalletTokens([]);
       }
     } catch (err) {
       console.error("Failed to load machine admin state:", err);
     } finally {
       setLoading(false);
     }
-  }, [machineId, publicKey, vaultAuthorityPda, slotMintInput]);
+  }, [machineId, publicKeyBase58, vaultAuthorityPda]);
 
   useEffect(() => {
     refreshAll();
@@ -166,15 +176,12 @@ export default function AdminMachinePage() {
     setTxLoading(true);
     setStatusMsg(null);
     try {
-      const { blockhash, lastValidBlockHeight } =
+      const { blockhash } =
         await baseConnection.getLatestBlockhash("confirmed");
       tx.recentBlockhash = blockhash;
       tx.feePayer = publicKey;
       const sig = await sendTransaction(tx, baseConnection);
-      await baseConnection.confirmTransaction(
-        { signature: sig, blockhash, lastValidBlockHeight },
-        "confirmed"
-      );
+      await confirmTx(baseConnection, sig);
       setStatusMsg({ type: "ok", text: okMsg, sig });
       await refreshAll();
     } catch (err: unknown) {
@@ -260,6 +267,12 @@ export default function AdminMachinePage() {
       tx,
       `Stocked Slot #${selectedSlotId} with ${slotAmountInput} tokens!`
     );
+    // Advance selection to next empty slot to prevent accidental overwrites
+    const refreshed = await fetchOnchainMachineConfig(machineId);
+    const nextEmpty = refreshed?.slots.find((s) => !s.inStock);
+    if (nextEmpty) {
+      selectSlot(nextEmpty.slotId);
+    }
   };
 
   const handleDelegateMachine = async () => {
@@ -268,6 +281,40 @@ export default function AdminMachinePage() {
       createDelegateMachineIx(publicKey, machineId)
     );
     await sendL1Tx(tx, `Delegated Machine #${machineId.toString()} to MagicBlock ER!`);
+  };
+
+  const handleUndelegateMachine = async () => {
+    if (!publicKey || !machine) return;
+    setTxLoading(true);
+    setStatusMsg(null);
+    try {
+      const tx = new Transaction().add(
+        createUndelegateMachineIx(publicKey, machineId)
+      );
+      const { blockhash } =
+        await erConnection.getLatestBlockhash("confirmed");
+      tx.recentBlockhash = blockhash;
+      tx.feePayer = publicKey;
+      if (!signTransaction) {
+        throw new Error("Wallet does not support signTransaction for MagicBlock ER.");
+      }
+      const signed = await signTransaction(tx);
+      const sig = await erConnection.sendRawTransaction(signed.serialize(), {
+        skipPreflight: true,
+      });
+      await confirmTx(erConnection, sig);
+      setStatusMsg({
+        type: "ok",
+        text: `Undelegated Machine #${machineId.toString()} back to Solana L1!`,
+        sig,
+      });
+      await refreshAll();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setStatusMsg({ type: "err", text: msg });
+    } finally {
+      setTxLoading(false);
+    }
   };
 
   const stockedCount = machine
@@ -528,14 +575,25 @@ export default function AdminMachinePage() {
                       </>
                     )}
                   </span>
-                  <button
-                    type="button"
-                    disabled={txLoading || !publicKey || Boolean(machine.isDelegated)}
-                    onClick={handleDelegateMachine}
-                    className="px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:brightness-110 disabled:opacity-40 text-white font-arcade font-bold text-xs cursor-pointer"
-                  >
-                    {machine.isDelegated ? "DELEGATED" : "DELEGATE TO ER"}
-                  </button>
+                  {machine.isDelegated ? (
+                    <button
+                      type="button"
+                      disabled={txLoading || !publicKey}
+                      onClick={handleUndelegateMachine}
+                      className="px-4 py-2 rounded-xl bg-amber-500/20 border border-amber-500/40 hover:bg-amber-500/30 disabled:opacity-40 text-amber-300 font-arcade font-bold text-xs cursor-pointer"
+                    >
+                      UNDELEGATE TO L1
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={txLoading || !publicKey}
+                      onClick={handleDelegateMachine}
+                      className="px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:brightness-110 disabled:opacity-40 text-white font-arcade font-bold text-xs cursor-pointer"
+                    >
+                      DELEGATE TO ER
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -549,16 +607,16 @@ export default function AdminMachinePage() {
                   16 CABINET PRIZE SLOTS (CLICK TO EDIT / STOCK)
                 </h2>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                  {machine.slots.map((slot) => {
+                  {machine.slots.map((slot, idx) => {
                     const tierCfg = PRIZE_TIERS[slot.tier] || PRIZE_TIERS[0];
-                    const selected = selectedSlotId === slot.slotId;
+                    const selected = selectedSlotId === idx;
                     const hasMint =
                       slot.prizeMint.toBase58() !== PublicKey.default.toBase58();
                     return (
                       <button
-                        key={slot.slotId}
+                        key={idx}
                         type="button"
-                        onClick={() => selectSlot(slot.slotId)}
+                        onClick={() => selectSlot(idx)}
                         className={`p-3 rounded-2xl border text-left transition cursor-pointer ${
                           selected
                             ? "border-cyan-400 bg-cyan-500/10"
@@ -567,7 +625,7 @@ export default function AdminMachinePage() {
                       >
                         <div className="flex items-center justify-between">
                           <span className="font-arcade text-xs font-black text-white">
-                            #{slot.slotId}
+                            #{idx}
                           </span>
                           <span
                             className={`text-[9px] font-mono px-1.5 py-0.5 rounded-full ${
@@ -607,9 +665,18 @@ export default function AdminMachinePage() {
                 <h2 className="font-arcade text-base font-bold text-white mb-1">
                   STOCK SLOT #{selectedSlotId}
                 </h2>
-                <p className="text-[11px] text-slate-400 font-mono mb-4">
+                <p className="text-[11px] text-slate-400 font-mono mb-3">
                   Transfers prize tokens/NFT from your admin wallet into the machine PrizeVault PDA.
                 </p>
+
+                {machine.slots[selectedSlotId]?.inStock && (
+                  <div className="mb-3 p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/40 text-amber-300 text-[11px] font-mono flex items-start gap-2">
+                    <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                    <span>
+                      Slot #{selectedSlotId} is already <strong>IN STOCK</strong>. Click an <strong>EMPTY</strong> slot on the left so you don&apos;t overwrite it.
+                    </span>
+                  </div>
+                )}
 
                 <form onSubmit={handleStockSlot} className="space-y-3.5">
                   <div>

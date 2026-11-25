@@ -11,6 +11,8 @@ import {
 } from "@solana/spl-token";
 import {
   DELEGATION_PROGRAM_ID,
+  MAGIC_CONTEXT_ID,
+  MAGIC_PROGRAM_ID,
   PROGRAM_ID,
 } from "./constants";
 import {
@@ -18,8 +20,15 @@ import {
   getVaultAuthorityPda,
   u64ToLeBytes,
 } from "./pda";
-import { baseConnection, erConnection, getDelegationStatus } from "./solana";
-import { MachineConfigData, PrizeSlot } from "./types";
+import {
+  baseConnection,
+  decodeMachineConfig,
+  erConnection,
+  getDelegationStatus,
+} from "./solana";
+import { MachineConfigData } from "./types";
+
+export { decodeMachineConfig };
 
 export const TOKEN_METADATA_PROGRAM_ID = new PublicKey(
   "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s"
@@ -35,119 +44,6 @@ export interface WalletTokenInfo {
 
 function toBuffer(data: Uint8Array): Buffer {
   return Buffer.from(data.buffer, data.byteOffset, data.byteLength);
-}
-
-/**
- * Decodes an onchain MachineConfig account from raw Anchor account bytes.
- */
-export function decodeMachineConfig(
-  data: Uint8Array,
-  isDelegated: boolean = false
-): MachineConfigData {
-  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-  let offset = 8; // skip 8-byte Anchor discriminator
-
-  const machineId = view.getBigUint64(offset, true);
-  offset += 8;
-
-  const admin = new PublicKey(data.slice(offset, offset + 32));
-  offset += 32;
-
-  const usdcMint = new PublicKey(data.slice(offset, offset + 32));
-  offset += 32;
-
-  const playFeeUsdc = view.getBigUint64(offset, true);
-  offset += 8;
-
-  const gripBps: number[] = [];
-  for (let i = 0; i < 4; i++) {
-    gripBps.push(view.getUint16(offset, true));
-    offset += 2;
-  }
-
-  const buybackBps: number[] = [];
-  for (let i = 0; i < 4; i++) {
-    buybackBps.push(view.getUint16(offset, true));
-    offset += 2;
-  }
-
-  const bullseyeBonusBps = view.getUint16(offset, true);
-  offset += 2;
-
-  const captureRadius = view.getUint16(offset, true);
-  offset += 2;
-
-  const bullseyeRadius = view.getUint16(offset, true);
-  offset += 2;
-
-  const playDurationSecs = view.getBigInt64(offset, true);
-  offset += 8;
-
-  const totalPlays = view.getBigUint64(offset, true);
-  offset += 8;
-
-  const totalWins = view.getBigUint64(offset, true);
-  offset += 8;
-
-  const slots: PrizeSlot[] = [];
-  for (let i = 0; i < 16; i++) {
-    const slotId = data[offset];
-    offset += 1;
-    const tier = data[offset];
-    offset += 1;
-    const x = view.getUint16(offset, true);
-    offset += 2;
-    const z = view.getUint16(offset, true);
-    offset += 2;
-    const prizeMint = new PublicKey(data.slice(offset, offset + 32));
-    offset += 32;
-    const prizeAmount = view.getBigUint64(offset, true);
-    offset += 8;
-    const prizeDecimals = data[offset];
-    offset += 1;
-    const priceFeed = new PublicKey(data.slice(offset, offset + 32));
-    offset += 32;
-    const fallbackBuybackUsdc = view.getBigUint64(offset, true);
-    offset += 8;
-    const inStock = data[offset] === 1;
-    offset += 1;
-    const reserved = data[offset] === 1;
-    offset += 1;
-
-    slots.push({
-      slotId,
-      tier,
-      x,
-      z,
-      prizeMint,
-      prizeAmount,
-      prizeDecimals,
-      priceFeed,
-      fallbackBuybackUsdc,
-      inStock,
-      reserved,
-    });
-  }
-
-  const bump = data[offset];
-
-  return {
-    machineId,
-    admin,
-    usdcMint,
-    playFeeUsdc,
-    gripBps,
-    buybackBps,
-    bullseyeBonusBps,
-    captureRadius,
-    bullseyeRadius,
-    playDurationSecs,
-    totalPlays,
-    totalWins,
-    slots,
-    bump,
-    isDelegated,
-  };
 }
 
 /**
@@ -430,6 +326,29 @@ export function createDelegateMachineIx(
   });
 }
 
+/**
+ * Builds the `undelegate_machine` instruction on MagicBlock ER.
+ */
+export function createUndelegateMachineIx(
+  admin: PublicKey,
+  machineId: bigint
+): TransactionInstruction {
+  const [machineConfig] = getMachinePda(machineId);
+  // Discriminator: [234, 56, 241, 187, 1, 106, 15, 192]
+  const disc = new Uint8Array([234, 56, 241, 187, 1, 106, 15, 192]);
+
+  return new TransactionInstruction({
+    programId: PROGRAM_ID,
+    keys: [
+      { pubkey: admin, isSigner: true, isWritable: true },
+      { pubkey: machineConfig, isSigner: false, isWritable: true },
+      { pubkey: MAGIC_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: MAGIC_CONTEXT_ID, isSigner: false, isWritable: true },
+    ],
+    data: toBuffer(disc),
+  });
+}
+
 function encodeBorshString(value: string): Uint8Array {
   const bytes = new TextEncoder().encode(value);
   const out = new Uint8Array(4 + bytes.length);
@@ -561,6 +480,75 @@ export function createCreateMasterEditionV3Ix(params: {
       { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
       { pubkey: SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false },
+    ],
+    data: toBuffer(data),
+  });
+}
+
+/**
+ * Builds Metaplex Token Metadata `UpdateMetadataAccountV2` (ix index 15)
+ * to update name, symbol, or metadata JSON URI on an existing mutable mint.
+ */
+export function createUpdateMetadataV2Ix(params: {
+  mint: PublicKey;
+  updateAuthority: PublicKey;
+  name: string;
+  symbol: string;
+  uri: string;
+  sellerFeeBasisPoints?: number;
+}): TransactionInstruction {
+  const encoder = new TextEncoder();
+  const [metadataPda] = PublicKey.findProgramAddressSync(
+    [
+      encoder.encode("metadata"),
+      TOKEN_METADATA_PROGRAM_ID.toBytes(),
+      params.mint.toBytes(),
+    ],
+    TOKEN_METADATA_PROGRAM_ID
+  );
+
+  const nameBytes = encodeBorshString(params.name.slice(0, 32));
+  const symbolBytes = encodeBorshString(params.symbol.slice(0, 10));
+  const uriBytes = encodeBorshString(params.uri.slice(0, 200));
+
+  const totalLen =
+    1 + // ix index 15
+    1 + // Option<DataV2> = Some(1)
+    nameBytes.length +
+    symbolBytes.length +
+    uriBytes.length +
+    2 + // seller_fee_basis_points
+    1 + // creators: None
+    1 + // collection: None
+    1 + // uses: None
+    1 + // new_update_authority: None
+    1 + // primary_sale_happened: None
+    1; // is_mutable: None
+
+  const data = new Uint8Array(totalLen);
+  let o = 0;
+  data[o++] = 15; // UpdateMetadataAccountV2
+  data[o++] = 1; // Some(DataV2)
+  data.set(nameBytes, o);
+  o += nameBytes.length;
+  data.set(symbolBytes, o);
+  o += symbolBytes.length;
+  data.set(uriBytes, o);
+  o += uriBytes.length;
+  new DataView(data.buffer).setUint16(o, params.sellerFeeBasisPoints ?? 0, true);
+  o += 2;
+  data[o++] = 0; // creators: None
+  data[o++] = 0; // collection: None
+  data[o++] = 0; // uses: None
+  data[o++] = 0; // new_update_authority: None
+  data[o++] = 0; // primary_sale_happened: None
+  data[o++] = 0; // is_mutable: None
+
+  return new TransactionInstruction({
+    programId: TOKEN_METADATA_PROGRAM_ID,
+    keys: [
+      { pubkey: metadataPda, isSigner: false, isWritable: true },
+      { pubkey: params.updateAuthority, isSigner: true, isWritable: false },
     ],
     data: toBuffer(data),
   });

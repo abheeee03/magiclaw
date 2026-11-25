@@ -1,8 +1,9 @@
 use anchor_lang::prelude::*;
 use anchor_spl::associated_token::AssociatedToken;
 use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer};
-use ephemeral_rollups_sdk::anchor::delegate;
+use ephemeral_rollups_sdk::anchor::{commit, delegate};
 use ephemeral_rollups_sdk::cpi::DelegateConfig;
+use ephemeral_rollups_sdk::ephem::{FoldableIntentBuilder, MagicIntentBundleBuilder};
 
 use crate::constants::*;
 use crate::error::ErrorCode;
@@ -298,6 +299,35 @@ pub fn handle_delegate_machine(
         &[MACHINE_SEED, &machine_id.to_le_bytes()],
         DelegateConfig::default(),
     )?;
+
+    Ok(())
+}
+
+#[commit]
+#[derive(Accounts)]
+pub struct UndelegateMachine<'info> {
+    #[account(mut)]
+    pub admin: Signer<'info>,
+
+    #[account(
+        mut,
+        seeds = [MACHINE_SEED, machine_config.machine_id.to_le_bytes().as_ref()],
+        bump = machine_config.bump,
+        has_one = admin @ ErrorCode::Unauthorized
+    )]
+    pub machine_config: Box<Account<'info, MachineConfig>>,
+}
+
+/// Commit and undelegate `MachineConfig` from the ER back to L1 so the admin
+/// can restock empty prize slots or update slot inventory.
+pub fn handle_undelegate_machine(ctx: Context<UndelegateMachine>) -> Result<()> {
+    MagicIntentBundleBuilder::new(
+        ctx.accounts.admin.to_account_info(),
+        ctx.accounts.magic_context.to_account_info(),
+        ctx.accounts.magic_program.to_account_info(),
+    )
+    .commit_and_undelegate(&[ctx.accounts.machine_config.to_account_info()])
+    .build_and_invoke()?;
 
     Ok(())
 }

@@ -31,7 +31,7 @@ const encoder = new TextEncoder();
 const IDENTITY_SEED = encoder.encode("identity");
 const BUFFER_SEED = encoder.encode("buffer");
 const DELEGATION_SEED = encoder.encode("delegation");
-const METADATA_SEED = encoder.encode("metadata");
+const METADATA_SEED = encoder.encode("delegation-metadata");
 
 /**
  * Derives the PlayerSession PDA for a given machine and player wallet.
@@ -80,19 +80,19 @@ export function getVaultAuthorityPda(
 export function getProgramIdentityPda(
   programId: PublicKey = PROGRAM_ID
 ): [PublicKey, number] {
-  return PublicKey.findProgramAddressSync([IDENTITY_SEED, programId.toBytes()], programId);
+  return PublicKey.findProgramAddressSync([IDENTITY_SEED], programId);
 }
 
 /**
- * Derives the Delegation Buffer PDA for an account.
+ * Derives the Delegation Buffer PDA for an account (seeded under the owner program).
  */
 export function getDelegationBufferPda(
   account: PublicKey,
-  delegationProgramId: PublicKey = DELEGATION_PROGRAM_ID
+  ownerProgramId: PublicKey = PROGRAM_ID
 ): [PublicKey, number] {
   return PublicKey.findProgramAddressSync(
     [BUFFER_SEED, account.toBytes()],
-    delegationProgramId
+    ownerProgramId
   );
 }
 

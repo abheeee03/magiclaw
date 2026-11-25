@@ -1,146 +1,241 @@
 "use client";
 
-import React from "react";
-import { X, ExternalLink, ShieldCheck, Target, Zap, Lock } from "lucide-react";
+import React, { useState } from "react";
+import { X, ExternalLink, ShieldCheck, Target, Package, Sparkles } from "lucide-react";
 import { PRIZE_TIERS, PROGRAM_ID, MACHINE_ID } from "../../lib/constants";
 import { getMachinePda } from "../../lib/pda";
+import { PrizeSlot } from "../../lib/types";
 
 interface VaultOddsModalProps {
   isOpen: boolean;
   onClose: () => void;
   isDelegated?: boolean;
+  slots?: PrizeSlot[];
+}
+
+function formatPrizeAmount(raw: bigint, decimals: number): string {
+  if (decimals === 0) return raw.toString();
+  const div = BigInt(10) ** BigInt(decimals);
+  const whole = raw / div;
+  const frac = (raw % div).toString().padStart(decimals, "0").replace(/0+$/, "");
+  return frac ? `${whole}.${frac}` : whole.toString();
 }
 
 export const VaultOddsModal: React.FC<VaultOddsModalProps> = ({
   isOpen,
   onClose,
   isDelegated = true,
+  slots = [],
 }) => {
+  const [failedImages, setFailedImages] = useState<Record<string, boolean>>({});
+
   if (!isOpen) return null;
 
   const [machinePda] = getMachinePda(MACHINE_ID);
+  const inStockSlots = slots.filter((s) => s.inStock);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md animate-fadeIn"
+      onClick={onClose}
+    >
       <div
-        className="relative w-full max-w-2xl max-h-[90vh] flex flex-col rounded-3xl border border-cyan-500/30 bg-slate-900/95 shadow-2xl overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+        className="relative w-full max-w-3xl max-h-[90vh] flex flex-col rounded-3xl border border-cyan-500/30 bg-[#0b0f1d]/95 shadow-2xl overflow-hidden"
         style={{
           boxShadow:
-            "0 0 50px rgba(6, 182, 212, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.1)",
+            "0 0 60px rgba(6, 182, 212, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.08)",
         }}
       >
         {/* Header */}
-        <div className="p-5 border-b border-slate-800 flex items-center justify-between bg-slate-950/60">
+        <div className="px-5 py-4 border-b border-slate-800/90 flex items-center justify-between bg-slate-950/70">
           <div>
-            <div className="flex items-center gap-2">
-              <h2 className="font-arcade text-xl sm:text-2xl font-black tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 via-pink-400 to-amber-300">
-                VAULT &amp; ONCHAIN ODDS
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="font-arcade text-lg sm:text-2xl font-black tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 via-pink-400 to-amber-300">
+                CABINET PRIZES &amp; ODDS
               </h2>
-              <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
-                PUBLIC PDA
+              <span className="text-[10px] font-mono font-bold px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/35">
+                {inStockSlots.length} / 16 IN STOCK
+              </span>
+              <span className="text-[10px] font-mono font-bold px-2.5 py-0.5 rounded-full bg-cyan-500/15 text-cyan-300 border border-cyan-500/35">
+                {isDelegated ? "⚡ ER Live" : "Solana L1"}
               </span>
             </div>
-            <p className="text-xs text-slate-400 mt-0.5">
-              MachineConfig PDA:{" "}
-              <code className="text-cyan-300 font-mono text-[11px]">
-                {machinePda.toBase58().slice(0, 8)}...{machinePda.toBase58().slice(-8)}
-              </code>
+            <p className="text-[11px] text-slate-400 mt-1 font-mono">
+              Every capsule below is backed by real Devnet SPL tokens or NFTs in Vault PDA{" "}
+              <a
+                href={`https://explorer.solana.com/address/${machinePda.toBase58()}?cluster=devnet`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-cyan-400 hover:underline"
+              >
+                {machinePda.toBase58().slice(0, 6)}...{machinePda.toBase58().slice(-6)}
+              </a>
             </p>
           </div>
 
           <button
             onClick={onClose}
-            className="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 cursor-pointer"
+            className="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 cursor-pointer shrink-0"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Content Body */}
-        <div className="p-5 overflow-y-auto space-y-5 custom-scroll">
-          {/* Architecture Banner */}
-          <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shrink-0">
-                <ShieldCheck className="w-5 h-5" />
-              </div>
-              <div>
-                <h4 className="text-sm font-bold text-white font-arcade">
-                  100% Verifiable Onchain Fairness
-                </h4>
-                <p className="text-xs text-slate-400">
-                  Player steering sets coordinates. The instant prongs close, MagicBlock VRF (50ms) resolves grip hold vs. slip.
-                </p>
-              </div>
-            </div>
-
-            <div className="shrink-0 flex items-center gap-2 text-xs font-mono">
-              <span className="px-2.5 py-1 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 font-bold">
-                {isDelegated ? "⚡ ER Delegated" : "Solana L1"}
+        {/* Scrollable Content */}
+        <div className="p-5 overflow-y-auto space-y-6 custom-scroll">
+          {/* Live Prizes Inside Machine */}
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-xs font-extrabold uppercase tracking-widest text-slate-200 font-mono flex items-center gap-1.5">
+                <Package className="w-4 h-4 text-cyan-400" />
+                Prizes Inside This Machine
+              </h3>
+              <span className="text-[11px] font-mono text-emerald-300 flex items-center gap-1">
+                <Target className="w-3.5 h-3.5" />
+                +3% Dead-Center Bullseye Bonus
               </span>
             </div>
-          </div>
 
-          {/* Precision Bonus Card */}
-          <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-950/40 to-slate-950/80 border border-emerald-500/30 flex items-center gap-3">
-            <Target className="w-8 h-8 text-emerald-400 shrink-0" />
-            <div>
-              <div className="flex items-center gap-2">
-                <h4 className="text-sm font-bold text-emerald-300 font-arcade">
-                  DEAD CENTER PRECISION BONUS (+3%)
-                </h4>
-                <span className="text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full">
-                  +300 BPS
-                </span>
+            {inStockSlots.length === 0 ? (
+              <div className="p-6 rounded-2xl bg-slate-950/80 border border-dashed border-slate-800 text-xs font-mono text-slate-400 text-center">
+                No stocked prizes found in this cabinet yet.
               </div>
-              <p className="text-xs text-slate-300 mt-0.5">
-                Steer the claw within the inner bullseye radius of a capsule to gain a visible +3% grip boost, rewarding pilot skill!
-              </p>
-            </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {inStockSlots.map((slot) => {
+                  const tierCfg = PRIZE_TIERS[slot.tier] || PRIZE_TIERS[0];
+                  const buybackUsd = (
+                    Number(slot.fallbackBuybackUsdc) / 1_000_000
+                  ).toFixed(2);
+                  const qty = formatPrizeAmount(
+                    slot.prizeAmount,
+                    slot.prizeDecimals
+                  );
+                  const mintStr = slot.prizeMint.toBase58();
+                  const isNft =
+                    slot.prizeDecimals === 0 && slot.prizeAmount === BigInt(1);
+                  const showImage = Boolean(slot.image) && !failedImages[mintStr];
+
+                  return (
+                    <div
+                      key={slot.slotId}
+                      className="group p-3.5 rounded-2xl bg-slate-950/90 border border-slate-800/90 hover:border-cyan-500/40 transition-all flex items-center gap-3.5 shadow-lg"
+                    >
+                      {/* Main Prize Image / Visual */}
+                      <div
+                        className="relative w-16 h-16 rounded-2xl bg-slate-900 border flex items-center justify-center shrink-0 overflow-hidden"
+                        style={{
+                          borderColor: `${tierCfg.color}55`,
+                          boxShadow: `0 0 18px ${tierCfg.color}22`,
+                        }}
+                      >
+                        {showImage ? (
+                          <img
+                            src={slot.image}
+                            alt={slot.name || `Slot #${slot.slotId}`}
+                            onError={() =>
+                              setFailedImages((prev) => ({
+                                ...prev,
+                                [mintStr]: true,
+                              }))
+                            }
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <span className="text-3xl">
+                            {slot.icon || (isNft ? "👑" : "🪙")}
+                          </span>
+                        )}
+                        <span className="absolute bottom-1 right-1 text-[9px] font-mono font-bold px-1.5 py-0.2 rounded bg-black/75 text-slate-200 border border-white/10">
+                          #{slot.slotId}
+                        </span>
+                      </div>
+
+                      {/* Details */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <h4 className="text-sm font-arcade font-bold text-white truncate">
+                            {slot.name || `Slot #${slot.slotId}`}
+                          </h4>
+                          <a
+                            href={`https://explorer.solana.com/address/${mintStr}?cluster=devnet`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title={`Inspect Mint ${mintStr}`}
+                            className="p-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-cyan-300 shrink-0"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </a>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                          <span
+                            className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full"
+                            style={{
+                              color: tierCfg.color,
+                              backgroundColor: `${tierCfg.color}18`,
+                              border: `1px solid ${tierCfg.color}45`,
+                            }}
+                          >
+                            {tierCfg.name} • {tierCfg.oddsLabel}
+                          </span>
+                          <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
+                            {isNft ? "1/1 NFT" : `${qty} ${slot.symbol || "SPL"}`}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-between mt-2 text-[11px] font-mono">
+                          <span className="text-slate-400">
+                            Instant Buyback:{" "}
+                            <strong className="text-amber-300 font-bold">
+                              ${buybackUsd}
+                            </strong>
+                          </span>
+                          <span className="text-slate-500">
+                            {mintStr.slice(0, 4)}..{mintStr.slice(-4)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
-          {/* Tier Odds Table */}
-          <div className="space-y-3">
-            <h3 className="text-xs font-extrabold uppercase tracking-widest text-slate-400 font-mono">
-              Transparent Prize Tiers &amp; Buyback Formula
-            </h3>
+          {/* Fairness & Tier Odds Reference */}
+          <div className="space-y-3 pt-2 border-t border-slate-800/80">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-extrabold uppercase tracking-widest text-slate-400 font-mono flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                Tier Grip Odds &amp; Sell-Back Rates
+              </h3>
+              <span className="text-[10px] font-mono text-slate-500 flex items-center gap-1">
+                <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
+                Verified by MagicBlock VRF
+              </span>
+            </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
               {PRIZE_TIERS.map((tier) => (
                 <div
                   key={tier.tier}
-                  className="p-4 rounded-2xl bg-slate-950/90 border border-slate-800 hover:border-slate-700 transition-all flex flex-col justify-between"
+                  className="p-3 rounded-2xl bg-slate-950/80 border border-slate-800 flex flex-col justify-between"
                 >
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <span
-                        className="text-xs font-arcade font-black uppercase px-2.5 py-1 rounded-lg"
-                        style={{
-                          color: tier.color,
-                          backgroundColor: `${tier.color}15`,
-                          border: `1px solid ${tier.color}40`,
-                        }}
-                      >
-                        {tier.name}
-                      </span>
-                      <span className="text-xs font-mono font-bold text-slate-300">
-                        {tier.oddsLabel} Base Grip
-                      </span>
-                    </div>
-
-                    <p className="text-xs font-semibold text-white mb-1">
-                      {tier.desc}
-                    </p>
-                    <p className="text-[11px] text-slate-400 leading-relaxed">
-                      {tier.badge} capsule
-                    </p>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span
+                      className="text-[11px] font-arcade font-black uppercase"
+                      style={{ color: tier.color }}
+                    >
+                      {tier.name}
+                    </span>
+                    <span className="text-xs font-mono font-bold text-white">
+                      {tier.oddsLabel}
+                    </span>
                   </div>
-
-                  <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs font-mono">
-                    <span className="text-slate-400">Live Sell-Back:</span>
-                    <strong className="text-amber-400 font-bold">
-                      Pyth Lazer × {tier.buybackLabel}
-                    </strong>
+                  <div className="text-[10px] font-mono text-slate-400">
+                    Buyback: <span className="text-amber-300">{tier.buybackLabel}</span>
                   </div>
                 </div>
               ))}
@@ -148,32 +243,25 @@ export const VaultOddsModal: React.FC<VaultOddsModalProps> = ({
           </div>
 
           {/* Onchain Proof Links */}
-          <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-2 text-xs font-mono">
-            <div className="flex items-center justify-between text-slate-400">
-              <span>Program ID:</span>
-              <a
-                href={`https://explorer.solana.com/address/${PROGRAM_ID.toBase58()}?cluster=devnet`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1 text-cyan-400 hover:underline"
-              >
-                <span>{PROGRAM_ID.toBase58().slice(0, 10)}...</span>
-                <ExternalLink className="w-3 h-3" />
-              </a>
-            </div>
-
-            <div className="flex items-center justify-between text-slate-400">
-              <span>MachineConfig PDA:</span>
-              <a
-                href={`https://explorer.solana.com/address/${machinePda.toBase58()}?cluster=devnet`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1 text-cyan-400 hover:underline"
-              >
-                <span>{machinePda.toBase58().slice(0, 10)}...</span>
-                <ExternalLink className="w-3 h-3" />
-              </a>
-            </div>
+          <div className="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800/80 flex flex-wrap items-center justify-between gap-3 text-[11px] font-mono text-slate-400">
+            <a
+              href={`https://explorer.solana.com/address/${PROGRAM_ID.toBase58()}?cluster=devnet`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1 hover:text-cyan-400"
+            >
+              Program: {PROGRAM_ID.toBase58().slice(0, 8)}...
+              <ExternalLink className="w-3 h-3" />
+            </a>
+            <a
+              href={`https://explorer.solana.com/address/${machinePda.toBase58()}?cluster=devnet`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1 hover:text-cyan-400"
+            >
+              Machine PDA: {machinePda.toBase58().slice(0, 8)}...
+              <ExternalLink className="w-3 h-3" />
+            </a>
           </div>
         </div>
       </div>

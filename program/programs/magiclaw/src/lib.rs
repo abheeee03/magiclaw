@@ -74,6 +74,10 @@ pub mod magiclaw {
         Ok(())
     }
 
+    pub fn undelegate_machine(ctx: Context<UndelegateMachine>) -> Result<()> {
+        crate::instructions::admin::handle_undelegate_machine(ctx)
+    }
+
     pub fn fund_usdc_liquidity(
         ctx: Context<FundUsdcLiquidity>,
         amount_usdc: u64,

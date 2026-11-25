@@ -257,7 +257,13 @@ export interface PrizeBody {
 /**
  * Creates a prize mesh based on tier and slot ID.
  */
-export function createPrizeBody(slotId: number, tier: number, xNorm: number, zNorm: number): PrizeBody {
+export function createPrizeBody(
+  slotId: number,
+  tier: number,
+  xNorm: number,
+  zNorm: number,
+  meta?: { name?: string; symbol?: string; image?: string }
+): PrizeBody {
   let mesh: THREE.Group;
   let radius = 0.165;
   let mass = 1.0;
@@ -318,11 +324,54 @@ export function createPrizeBody(slotId: number, tier: number, xNorm: number, zNo
   mesh.position.set(worldX, worldY, worldZ);
   mesh.rotation.y = (slotId * 0.94) + 0.35;
 
+  const displayName = meta?.name || name;
+  const displaySymbol = meta?.symbol || symbol;
+
+  // Floating holographic badge above capsule so players can see which token/NFT is inside
+  if (typeof document !== "undefined") {
+    const tierHex = ["#22d3ee", "#c084fc", "#f472b6", "#fbbf24"][tier] || "#22d3ee";
+    const canvas = document.createElement("canvas");
+    canvas.width = 256;
+    canvas.height = 72;
+    const ctx = canvas.getContext("2d");
+    if (ctx) {
+      ctx.fillStyle = "rgba(7, 10, 22, 0.88)";
+      ctx.strokeStyle = tierHex;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.roundRect(4, 4, 248, 64, 16);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "bold 22px monospace";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      const label = displayName.length > 16 ? `${displayName.slice(0, 15)}…` : displayName;
+      ctx.fillText(label, 128, 28);
+
+      ctx.fillStyle = tierHex;
+      ctx.font = "bold 16px monospace";
+      ctx.fillText(`#${slotId} • ${displaySymbol}`, 128, 52);
+
+      const tex = new THREE.CanvasTexture(canvas);
+      const spriteMat = new THREE.SpriteMaterial({
+        map: tex,
+        transparent: true,
+        depthWrite: false,
+      });
+      const sprite = new THREE.Sprite(spriteMat);
+      sprite.position.set(0, radius + 0.16, 0);
+      sprite.scale.set(0.42, 0.12, 1);
+      mesh.add(sprite);
+    }
+  }
+
   return {
     slotId,
     tier,
-    name,
-    symbol,
+    name: displayName,
+    symbol: displaySymbol,
     icon,
     radius,
     mass,

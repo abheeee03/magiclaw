@@ -18,12 +18,22 @@ import { PrizeSlot, WonPrizeInfo } from "../../lib/types";
 import { computeLiveBuyback, getLivePythPrice } from "../../lib/pyth";
 import { getDefaultPrizeSlots } from "../../lib/solana";
 
+export interface OnchainVrfResult {
+  nonce: number;
+  outcome: "Won" | "Slipped" | "Miss";
+  roll: number;
+  targetSlot: number;
+  isBullseye: boolean;
+}
+
 export interface ClawMachineViewProps {
   slots?: PrizeSlot[];
   usdcBalance?: string;
   isSteeringAllowed?: boolean;
+  isOnchainActive?: boolean;
+  onchainVrfResult?: OnchainVrfResult | null;
   onSteerDelta?: (dx: number, dz: number) => void;
-  onDropTriggered?: (clientSeed: number) => void;
+  onDropTriggered?: (clientSeed: number, clawX: number, clawZ: number) => void;
   onWinPrize?: (prize: WonPrizeInfo) => void;
   activeCamMode: "front" | "side" | "iso" | "orbit";
   onCamModeChange?: (mode: "front" | "side" | "iso" | "orbit") => void;
@@ -64,6 +74,8 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
   slots,
   usdcBalance = "10.00",
   isSteeringAllowed = true,
+  isOnchainActive = false,
+  onchainVrfResult = null,
   onSteerDelta,
   onDropTriggered,
   onWinPrize,
@@ -81,6 +93,8 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
     slots,
     usdcBalance,
     isSteeringAllowed,
+    isOnchainActive,
+    onchainVrfResult,
     onSteerDelta,
     onDropTriggered,
     onWinPrize,
@@ -94,6 +108,8 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
     slots,
     usdcBalance,
     isSteeringAllowed,
+    isOnchainActive,
+    onchainVrfResult,
     onSteerDelta,
     onDropTriggered,
     onWinPrize,
@@ -134,6 +150,14 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
 
   const keysRef = useRef<Record<string, boolean>>({});
   const prizesRef = useRef<PrizeBody[]>([]);
+  const cabinetGroupRef = useRef<THREE.Group | null>(null);
+  const syncPrizesRef = useRef<((slotList?: PrizeSlot[]) => void) | null>(null);
+  const lastVrfNonceAppliedRef = useRef<number>(0);
+
+  // Re-sync 3D capsules whenever onchain MachineConfig slots update
+  useEffect(() => {
+    syncPrizesRef.current?.(slots);
+  }, [slots]);
 
   // Camera transition
   useEffect(() => {
@@ -146,6 +170,7 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
   }, [activeCamMode]);
 
   const triggerDrop = useCallback(() => {
+    if (!propsRef.current.isSteeringAllowed) return;
     arcadeAudio.init();
     if (stateRef.current.state !== "READY" && stateRef.current.state !== "MOVING") return;
 
@@ -159,7 +184,9 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
     arcadeAudio.setWinch(-1);
 
     const clientSeed = Math.floor(Math.random() * 255);
-    propsRef.current.onDropTriggered?.(clientSeed);
+    const clawX = Math.max(0, Math.min(1000, Math.round(((stateRef.current.gantryX + 0.81) / 1.62) * 1000)));
+    const clawZ = Math.max(0, Math.min(1000, Math.round(((stateRef.current.gantryZ + 0.70) / 1.40) * 1000)));
+    propsRef.current.onDropTriggered?.(clientSeed, clawX, clawZ);
   }, []);
 
   // Handle external drop trigger
@@ -656,18 +683,31 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
     const laserBeam = new THREE.Line(laserBeamGeo, laserBeamMat);
     clawAssembly.add(laserBeam);
 
-    // Spawn Prizes: Use passed slots or default calibrated 16 slots
-    const currentSlots =
-      propsRef.current.slots && propsRef.current.slots.length > 0
-        ? propsRef.current.slots
-        : getDefaultPrizeSlots(PublicKey.default);
-    const prizeBodies: PrizeBody[] = [];
-    currentSlots.forEach((s) => {
-      const p = createPrizeBody(s.slotId, s.tier, s.x, s.z);
-      cabinetGroup.add(p.mesh);
-      prizeBodies.push(p);
-    });
-    prizesRef.current = prizeBodies;
+    // Spawn Prizes: Use passed slots (filtering inStock) or default calibrated 16 slots
+    cabinetGroupRef.current = cabinetGroup;
+    const syncPrizesToScene = (slotList?: PrizeSlot[]) => {
+      for (const old of prizesRef.current) {
+        cabinetGroup.remove(old.mesh);
+      }
+      const source =
+        slotList && slotList.length > 0
+          ? slotList.filter((s) => s.inStock)
+          : getDefaultPrizeSlots(PublicKey.default);
+      const prizeBodies: PrizeBody[] = [];
+      source.forEach((s) => {
+        const p = createPrizeBody(s.slotId, s.tier, s.x, s.z, {
+          name: s.name,
+          symbol: s.symbol,
+          image: s.image,
+        });
+        if (s.icon) p.icon = s.icon;
+        cabinetGroup.add(p.mesh);
+        prizeBodies.push(p);
+      });
+      prizesRef.current = prizeBodies;
+    };
+    syncPrizesRef.current = syncPrizesToScene;
+    syncPrizesToScene(propsRef.current.slots);
 
     setIsLoaded(true);
 
@@ -866,7 +906,45 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
         }
       } else if (state.state === "GRABBING") {
         if (state.grabbedPrize) state.targetClawOpen = 0.24;
-        if (state.stateTime >= 0.55) {
+
+        // If connected onchain, wait for VRF resolution from MagicBlock ER before lifting
+        if (propsRef.current.isOnchainActive) {
+          const vrf = propsRef.current.onchainVrfResult;
+          if (vrf && vrf.nonce > lastVrfNonceAppliedRef.current) {
+            lastVrfNonceAppliedRef.current = vrf.nonce;
+            if (vrf.outcome === "Miss") {
+              if (state.grabbedPrize) {
+                state.grabbedPrize.grabbed = false;
+                state.grabbedPrize = null;
+              }
+            } else {
+              const targetBody =
+                prizesRef.current.find((pr) => pr.slotId === vrf.targetSlot && !pr.won) ||
+                state.grabbedPrize;
+              if (targetBody) {
+                if (state.grabbedPrize && state.grabbedPrize !== targetBody) {
+                  state.grabbedPrize.grabbed = false;
+                }
+                targetBody.grabbed = true;
+                state.grabbedPrize = targetBody;
+                state.willSlip = vrf.outcome === "Slipped";
+                state.slipThresholdY = THREE.MathUtils.lerp(1.2, 1.85, 0.5);
+              }
+            }
+            state.state = "LIFTING";
+            state.stateTime = 0;
+            arcadeAudio.setWinch(1);
+          } else if (state.stateTime >= 10.0) {
+            // Timeout fallback so claw doesn't freeze forever
+            if (state.grabbedPrize) {
+              state.grabbedPrize.grabbed = false;
+              state.grabbedPrize = null;
+            }
+            state.state = "LIFTING";
+            state.stateTime = 0;
+            arcadeAudio.setWinch(1);
+          }
+        } else if (state.stateTime >= 0.55) {
           state.state = "LIFTING";
           state.stateTime = 0;
           arcadeAudio.setWinch(1);
@@ -922,21 +1000,48 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
             state.doorSwing = 1.0;
             arcadeAudio.playWinFanfare();
 
-            // Trigger Win Callback
-            const livePrice = getLivePythPrice(p.symbol).priceUsd;
-            const buyback = computeLiveBuyback(p.tier, p.symbol);
+            // Trigger Win Callback with real onchain slot details when available
+            const vrf = propsRef.current.onchainVrfResult;
+            const resolvedSlotId =
+              propsRef.current.isOnchainActive && vrf ? vrf.targetSlot : p.slotId;
+            const onchainSlot = propsRef.current.slots?.find(
+              (s) => s.slotId === resolvedSlotId
+            );
+            const livePrice = onchainSlot
+              ? Number(onchainSlot.fallbackBuybackUsdc) / 1_000_000
+              : getLivePythPrice(p.symbol).priceUsd;
+            const buyback = onchainSlot
+              ? Number(onchainSlot.fallbackBuybackUsdc) / 1_000_000
+              : computeLiveBuyback(p.tier, p.symbol);
+            const amountNum = onchainSlot
+              ? Number(onchainSlot.prizeAmount) / Math.pow(10, onchainSlot.prizeDecimals)
+              : 1;
+            const amountStr = amountNum.toLocaleString("en-US", {
+              maximumFractionDigits: 4,
+            });
+            const isNft = Boolean(
+              onchainSlot &&
+                onchainSlot.prizeDecimals === 0 &&
+                onchainSlot.prizeAmount === BigInt(1)
+            );
+            const baseBps = [6500, 3200, 1200, 400][onchainSlot?.tier ?? p.tier] || 6500;
+            const isBull = vrf?.isBullseye ?? false;
             propsRef.current.onWinPrize?.({
-              slotId: p.slotId,
-              tier: p.tier,
-              tierName: ["Common", "Rare", "Epic", "Grail"][p.tier] || "Common",
-              name: p.name,
-              symbol: p.symbol,
-              icon: p.icon,
-              amount: "1.0",
-              mint: "SolanaVaultCustody111111111111111111111",
-              isBullseye: !state.willSlip,
-              vrfRoll: Math.floor(Math.random() * 3000),
-              effectiveOddsBps: [6500, 3200, 1200, 400][p.tier] || 6500,
+              slotId: resolvedSlotId,
+              tier: onchainSlot?.tier ?? p.tier,
+              tierName: ["Common", "Rare", "Epic", "Grail"][onchainSlot?.tier ?? p.tier] || "Common",
+              name: onchainSlot?.name || p.name,
+              symbol: onchainSlot?.symbol || p.symbol,
+              icon: onchainSlot?.icon || p.icon,
+              image: onchainSlot?.image,
+              amount: amountStr,
+              isNft,
+              mint: onchainSlot
+                ? onchainSlot.prizeMint.toBase58()
+                : "SolanaVaultCustody111111111111111111111",
+              isBullseye: isBull,
+              vrfRoll: vrf?.roll ?? Math.floor(Math.random() * 3000),
+              effectiveOddsBps: isBull ? Math.min(9900, baseBps + 300) : baseBps,
               livePriceUsd: livePrice,
               sellBackUsdc: buyback,
             });

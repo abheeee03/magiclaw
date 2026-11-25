@@ -2,9 +2,8 @@ use anchor_lang::prelude::*;
 use anchor_spl::token::Token;
 use ephemeral_rollups_sdk::anchor::commit;
 use ephemeral_rollups_sdk::ephem::{
-    CallHandler, FoldableIntentBuilder, MagicIntentBundleBuilder,
+    FoldableIntentBuilder, MagicIntentBundleBuilder,
 };
-use ephemeral_rollups_sdk::{ActionArgs, ShortAccountMeta};
 
 use crate::constants::*;
 use crate::error::ErrorCode;
@@ -124,77 +123,42 @@ pub fn handle_claim_prize(ctx: Context<ClaimPrize>) -> Result<()> {
         &ctx.accounts.player_session,
         now,
     )?;
-    require!(
-        ctx.accounts.player_session.state == SessionState::WonPendingChoice,
-        ErrorCode::InvalidState
-    );
 
-    let idx = ctx.accounts.player_session.target_slot as usize;
-    let slot = *ctx
-        .accounts
-        .machine_config
-        .slots
-        .get(idx)
-        .ok_or(ErrorCode::InvalidSlot)?;
+    let session = &mut ctx.accounts.player_session;
+    if session.state == SessionState::WonPendingChoice {
+        let idx = session.target_slot as usize;
+        let slot = *ctx
+            .accounts
+            .machine_config
+            .slots
+            .get(idx)
+            .ok_or(ErrorCode::InvalidSlot)?;
 
-    let session: &mut PlayerSession = &mut ctx.accounts.player_session;
-    session.claim_nonce = session
-        .claim_nonce
-        .checked_add(1)
-        .ok_or(ErrorCode::MathOverflow)?;
-    session.pending_claim_mint = slot.prize_mint;
-    session.pending_claim_amount = slot.prize_amount;
-    session.state = SessionState::Idle;
-    session.last_outcome = LastOutcome::Claimed;
+        session.claim_nonce = session
+            .claim_nonce
+            .checked_add(1)
+            .ok_or(ErrorCode::MathOverflow)?;
+        session.pending_claim_mint = slot.prize_mint;
+        session.pending_claim_amount = slot.prize_amount;
+        session.state = SessionState::Idle;
+        session.last_outcome = LastOutcome::Claimed;
 
-    emit!(PrizeClaimRequested {
-        owner: session.owner,
-        slot_id: slot.slot_id,
-        claim_nonce: session.claim_nonce,
-        mint: slot.prize_mint,
-        amount: slot.prize_amount,
-    });
-
-    let action = CallHandler {
-        args: ActionArgs::new(
-            anchor_lang::InstructionData::data(&crate::instruction::ExecuteL1PrizeClaim {}),
-        ),
-        compute_units: 200_000,
-        // The player who signed the ER transaction also pays for the base-layer
-        // action. The action handler binds this account to the session owner/key.
-        escrow_authority: ctx.accounts.signer.to_account_info(),
-        destination_program: crate::ID,
-        accounts: vec![
-            ShortAccountMeta {
-                pubkey: ctx.accounts.machine_config.key(),
-                is_writable: false,
-            },
-            ShortAccountMeta {
-                pubkey: ctx.accounts.player_session.key(),
-                is_writable: false,
-            },
-            ShortAccountMeta {
-                pubkey: ctx.accounts.player_ledger.key(),
-                is_writable: true,
-            },
-            ShortAccountMeta {
-                pubkey: ctx.accounts.vault_authority.key(),
-                is_writable: false,
-            },
-            ShortAccountMeta {
-                pubkey: ctx.accounts.prize_vault_ata.key(),
-                is_writable: true,
-            },
-            ShortAccountMeta {
-                pubkey: ctx.accounts.owner_prize_ata.key(),
-                is_writable: true,
-            },
-            ShortAccountMeta {
-                pubkey: ctx.accounts.token_program.key(),
-                is_writable: false,
-            },
-        ],
-    };
+        emit!(PrizeClaimRequested {
+            owner: session.owner,
+            slot_id: slot.slot_id,
+            claim_nonce: session.claim_nonce,
+            mint: slot.prize_mint,
+            amount: slot.prize_amount,
+        });
+    } else {
+        // Allow idempotent re-commit if a previous claim intent hasn't landed on L1 yet.
+        require!(
+            session.state == SessionState::Idle
+                && session.last_outcome == LastOutcome::Claimed
+                && session.claim_nonce > 0,
+            ErrorCode::InvalidState
+        );
+    }
 
     MagicIntentBundleBuilder::new(
         ctx.accounts.signer.to_account_info(),
@@ -202,7 +166,6 @@ pub fn handle_claim_prize(ctx: Context<ClaimPrize>) -> Result<()> {
         ctx.accounts.magic_program.to_account_info(),
     )
     .commit(&[ctx.accounts.player_session.to_account_info()])
-    .add_post_commit_actions([action])
     .build_and_invoke()?;
 
     Ok(())
@@ -271,57 +234,13 @@ pub fn handle_request_withdraw_and_undelegate(
             .ok_or(ErrorCode::MathOverflow)?;
     }
 
-    let mut builder = MagicIntentBundleBuilder::new(
+    MagicIntentBundleBuilder::new(
         ctx.accounts.owner.to_account_info(),
         ctx.accounts.magic_context.to_account_info(),
         ctx.accounts.magic_program.to_account_info(),
     )
-    .commit_and_undelegate(&[ctx.accounts.player_session.to_account_info()]);
-
-    if withdraw > 0 {
-        let action = CallHandler {
-            args: ActionArgs::new(
-                anchor_lang::InstructionData::data(&crate::instruction::ExecuteL1UsdcWithdraw {}),
-            ),
-            compute_units: 200_000,
-            escrow_authority: ctx.accounts.owner.to_account_info(),
-            destination_program: crate::ID,
-            accounts: vec![
-                ShortAccountMeta {
-                    pubkey: ctx.accounts.machine_config.key(),
-                    is_writable: false,
-                },
-                ShortAccountMeta {
-                    pubkey: ctx.accounts.player_session.key(),
-                    is_writable: false,
-                },
-                ShortAccountMeta {
-                    pubkey: ctx.accounts.player_ledger.key(),
-                    is_writable: true,
-                },
-                ShortAccountMeta {
-                    pubkey: ctx.accounts.vault_authority.key(),
-                    is_writable: false,
-                },
-                ShortAccountMeta {
-                    pubkey: ctx.accounts.usdc_vault.key(),
-                    is_writable: true,
-                },
-                ShortAccountMeta {
-                    pubkey: ctx.accounts.owner_usdc_ata.key(),
-                    is_writable: true,
-                },
-                ShortAccountMeta {
-                    pubkey: ctx.accounts.token_program.key(),
-                    is_writable: false,
-                },
-            ],
-        };
-
-        builder = builder.add_post_undelegate_actions([action]);
-    }
-
-    builder.build_and_invoke()?;
+    .commit_and_undelegate(&[ctx.accounts.player_session.to_account_info()])
+    .build_and_invoke()?;
 
     Ok(())
 }

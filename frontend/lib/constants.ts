@@ -10,6 +10,9 @@ export const HELIUS_RPC_URL =
     ? `${window.location.origin}/api/rpc`
     : process.env.NEXT_PUBLIC_SOLANA_RPC_URL || "https://api.devnet.solana.com";
 
+export const SOLANA_WS_URL =
+  process.env.NEXT_PUBLIC_SOLANA_WS_URL || "wss://api.devnet.solana.com";
+
 export const MACHINE_ID = BigInt(process.env.NEXT_PUBLIC_MACHINE_ID || "42");
 
 export const ROUTER_ENDPOINT =
@@ -43,7 +46,7 @@ export const DEFAULT_EPHEMERAL_QUEUE = new PublicKey(
 );
 
 export const VRF_PROGRAM_ID = new PublicKey(
-  "Vrf1111111111111111111111111111111111111111",
+  "Vrf1RNUjXmQGjmQrQLvJHs9SNkvDJEsRVFPkfSQUwGz",
 );
 
 export const PRICE_ORACLE_PROGRAM_ID = new PublicKey(

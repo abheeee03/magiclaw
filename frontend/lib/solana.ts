@@ -15,9 +15,11 @@ import {
 import {
   PROGRAM_ID,
   HELIUS_RPC_URL,
+  SOLANA_WS_URL,
   MACHINE_ID,
   ROUTER_ENDPOINT,
   EPHEMERAL_PROVIDER_ENDPOINT,
+  EPHEMERAL_WS_ENDPOINT,
   DELEGATION_PROGRAM_ID,
   MAGIC_PROGRAM_ID,
   MAGIC_CONTEXT_ID,
@@ -37,17 +39,57 @@ import {
   getDelegationRecordPda,
   getDelegationMetadataPda,
 } from "./pda";
-import { MachineConfigData, PlayerSessionData, PrizeSlot } from "./types";
+import {
+  LastOutcome,
+  MachineConfigData,
+  PlayerSessionData,
+  PrizeSlot,
+  SessionState,
+} from "./types";
+import { fetchOnchainPrizeMetadata } from "./metadata";
 
-// Base Layer Connection (Helius Devnet)
+// Base Layer Connection (Proxied via /api/rpc; WS uses NEXT_PUBLIC_SOLANA_WS_URL with Devnet fallback)
 export const baseConnection = new Connection(HELIUS_RPC_URL, {
   commitment: "confirmed",
+  wsEndpoint: SOLANA_WS_URL,
 });
 
 // Ephemeral Rollup Connection (MagicBlock Devnet ER)
 export const erConnection = new Connection(EPHEMERAL_PROVIDER_ENDPOINT, {
   commitment: "confirmed",
+  wsEndpoint: EPHEMERAL_WS_ENDPOINT,
 });
+
+/**
+ * Confirms a transaction via HTTP polling (`getSignatureStatuses`) so confirmation
+ * never hangs or fails on browser WebSocket drops.
+ */
+export async function confirmTx(
+  connection: Connection,
+  signature: string,
+  timeoutMs: number = 45_000
+): Promise<void> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const res = await connection.getSignatureStatuses([signature], {
+      searchTransactionHistory: true,
+    });
+    const status = res.value[0];
+    if (status) {
+      if (status.err) {
+        throw new Error(`Transaction failed: ${JSON.stringify(status.err)}`);
+      }
+      if (
+        status.confirmationStatus === "confirmed" ||
+        status.confirmationStatus === "finalized"
+      ) {
+        return;
+      }
+    }
+    await new Promise((r) => setTimeout(r, 600));
+  }
+  throw new Error(`Transaction confirmation timed out for ${signature}`);
+}
 
 export interface DelegationStatus {
   isDelegated: boolean;
@@ -142,24 +184,301 @@ export function getDefaultPrizeSlots(machinePda: PublicKey): PrizeSlot[] {
   }));
 }
 
-/**
- * Fetches the MachineConfig account or returns the fallback cabinet config.
- */
-export async function fetchMachineConfig(machineId: bigint = MACHINE_ID): Promise<MachineConfigData> {
-  const [machinePda, bump] = getMachinePda(machineId);
+const SESSION_STATES: SessionState[] = [
+  "Idle",
+  "Steering",
+  "AwaitingVrf",
+  "WonPendingChoice",
+];
 
-  // Check delegation status first
+const LAST_OUTCOMES: LastOutcome[] = [
+  "None",
+  "Miss",
+  "Slipped",
+  "Won",
+  "SoldBack",
+  "Claimed",
+];
+
+function getSavedMintMetaMap(): Record<
+  string,
+  { name: string; symbol: string; isNft?: boolean }
+> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem("clawvault_admin_mints_v1");
+    if (!raw) return {};
+    const list = JSON.parse(raw) as Array<{
+      mint: string;
+      name: string;
+      symbol: string;
+      isNft?: boolean;
+    }>;
+    const map: Record<string, { name: string; symbol: string; isNft?: boolean }> = {};
+    for (const item of list) map[item.mint] = item;
+    return map;
+  } catch {
+    return {};
+  }
+}
+
+function enrichSlotDisplay(slot: PrizeSlot): PrizeSlot {
+  const tierIcons = ["🪙", "💎", "🔮", "👑"];
+  const tierSymbols = ["SPL", "RARE", "EPIC", "NFT"];
+  const mintStr = slot.prizeMint.toBase58();
+  const saved = getSavedMintMetaMap()[mintStr];
+  const isNft = slot.prizeDecimals === 0 && slot.prizeAmount === BigInt(1);
+
+  return {
+    ...slot,
+    name:
+      saved?.name ||
+      (isNft
+        ? `Devnet NFT #${slot.slotId}`
+        : `Devnet ${tierSymbols[slot.tier] || "SPL"} #${slot.slotId}`),
+    symbol: saved?.symbol || (isNft ? "NFT" : tierSymbols[slot.tier] || "SPL"),
+    icon: isNft ? "👑" : tierIcons[slot.tier] || "🪙",
+  };
+}
+
+/**
+ * Decodes an onchain MachineConfig account from raw Anchor account bytes.
+ */
+export function decodeMachineConfig(
+  data: Uint8Array,
+  isDelegated: boolean = false
+): MachineConfigData {
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  let offset = 8; // skip 8-byte Anchor discriminator
+
+  const machineId = view.getBigUint64(offset, true);
+  offset += 8;
+
+  const admin = new PublicKey(data.slice(offset, offset + 32));
+  offset += 32;
+
+  const usdcMint = new PublicKey(data.slice(offset, offset + 32));
+  offset += 32;
+
+  const playFeeUsdc = view.getBigUint64(offset, true);
+  offset += 8;
+
+  const gripBps: number[] = [];
+  for (let i = 0; i < 4; i++) {
+    gripBps.push(view.getUint16(offset, true));
+    offset += 2;
+  }
+
+  const buybackBps: number[] = [];
+  for (let i = 0; i < 4; i++) {
+    buybackBps.push(view.getUint16(offset, true));
+    offset += 2;
+  }
+
+  const bullseyeBonusBps = view.getUint16(offset, true);
+  offset += 2;
+
+  const captureRadius = view.getUint16(offset, true);
+  offset += 2;
+
+  const bullseyeRadius = view.getUint16(offset, true);
+  offset += 2;
+
+  const playDurationSecs = view.getBigInt64(offset, true);
+  offset += 8;
+
+  const totalPlays = view.getBigUint64(offset, true);
+  offset += 8;
+
+  const totalWins = view.getBigUint64(offset, true);
+  offset += 8;
+
+  const slots: PrizeSlot[] = [];
+  for (let i = 0; i < 16; i++) {
+    offset += 1; // slot_id (we always use index i)
+    const tier = data[offset];
+    offset += 1;
+    const x = view.getUint16(offset, true);
+    offset += 2;
+    const z = view.getUint16(offset, true);
+    offset += 2;
+    const prizeMint = new PublicKey(data.slice(offset, offset + 32));
+    offset += 32;
+    const prizeAmount = view.getBigUint64(offset, true);
+    offset += 8;
+    const prizeDecimals = data[offset];
+    offset += 1;
+    const priceFeed = new PublicKey(data.slice(offset, offset + 32));
+    offset += 32;
+    const fallbackBuybackUsdc = view.getBigUint64(offset, true);
+    offset += 8;
+    const inStock = data[offset] === 1;
+    offset += 1;
+    const reserved = data[offset] === 1;
+    offset += 1;
+
+    slots.push(
+      enrichSlotDisplay({
+        slotId: i,
+        tier,
+        x,
+        z,
+        prizeMint,
+        prizeAmount,
+        prizeDecimals,
+        priceFeed,
+        fallbackBuybackUsdc,
+        inStock,
+        reserved,
+      })
+    );
+  }
+
+  const bump = data[offset];
+
+  return {
+    machineId,
+    admin,
+    usdcMint,
+    playFeeUsdc,
+    gripBps,
+    buybackBps,
+    bullseyeBonusBps,
+    captureRadius,
+    bullseyeRadius,
+    playDurationSecs,
+    totalPlays,
+    totalWins,
+    slots,
+    bump,
+    isDelegated,
+  };
+}
+
+/**
+ * Decodes an onchain PlayerSession account from raw Anchor account bytes.
+ */
+export function decodePlayerSession(
+  data: Uint8Array,
+  isDelegated: boolean = false
+): PlayerSessionData {
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  let offset = 8; // discriminator
+
+  const machine = new PublicKey(data.slice(offset, offset + 32));
+  offset += 32;
+  const owner = new PublicKey(data.slice(offset, offset + 32));
+  offset += 32;
+  const sessionKey = new PublicKey(data.slice(offset, offset + 32));
+  offset += 32;
+  const sessionExpiry = view.getBigInt64(offset, true);
+  offset += 8;
+  const usdcBalance = view.getBigUint64(offset, true);
+  offset += 8;
+  const cumulativeDepositedUsdc = view.getBigUint64(offset, true);
+  offset += 8;
+  const cumulativeWithdrawnUsdc = view.getBigUint64(offset, true);
+  offset += 8;
+  const clawX = view.getUint16(offset, true);
+  offset += 2;
+  const clawZ = view.getUint16(offset, true);
+  offset += 2;
+  const state = SESSION_STATES[data[offset]] ?? "Idle";
+  offset += 1;
+  const playExpiresAt = view.getBigInt64(offset, true);
+  offset += 8;
+  const targetSlot = data[offset];
+  offset += 1;
+  const isBullseye = data[offset] === 1;
+  offset += 1;
+  const lastVrfRoll = view.getUint16(offset, true);
+  offset += 2;
+  const lastOutcome = LAST_OUTCOMES[data[offset]] ?? "None";
+  offset += 1;
+  const claimNonce = view.getBigUint64(offset, true);
+  offset += 8;
+  const pendingClaimMint = new PublicKey(data.slice(offset, offset + 32));
+  offset += 32;
+  const pendingClaimAmount = view.getBigUint64(offset, true);
+  offset += 8;
+  const vrfRequestNonce = view.getBigUint64(offset, true);
+  offset += 8;
+  const playsCount = view.getBigUint64(offset, true);
+  offset += 8;
+  const winsCount = view.getBigUint64(offset, true);
+  offset += 8;
+  const bump = data[offset];
+
+  return {
+    machine,
+    owner,
+    sessionKey,
+    sessionExpiry,
+    usdcBalance,
+    cumulativeDepositedUsdc,
+    cumulativeWithdrawnUsdc,
+    clawX,
+    clawZ,
+    state,
+    playExpiresAt,
+    targetSlot,
+    isBullseye,
+    lastVrfRoll,
+    lastOutcome,
+    claimNonce,
+    pendingClaimMint,
+    pendingClaimAmount,
+    vrfRequestNonce,
+    playsCount,
+    winsCount,
+    bump,
+    isDelegated,
+  };
+}
+
+/**
+ * Fetches and decodes the real onchain MachineConfig account, falling back to defaults if uninitialized.
+ */
+export async function fetchMachineConfig(
+  machineId: bigint = MACHINE_ID
+): Promise<MachineConfigData> {
+  const [machinePda, bump] = getMachinePda(machineId);
   const delegation = await getDelegationStatus(machinePda);
   const activeConn = delegation.isDelegated ? erConnection : baseConnection;
 
   try {
+    let decoded: MachineConfigData | null = null;
     const accInfo = await activeConn.getAccountInfo(machinePda);
-    if (accInfo && accInfo.data.length > 0) {
-      // Decode if initialized
-      console.log("Found onchain MachineConfig account, size:", accInfo.data.length);
+    if (accInfo && accInfo.data.length >= 1559) {
+      decoded = decodeMachineConfig(accInfo.data, delegation.isDelegated);
+    } else if (delegation.isDelegated) {
+      const l1Info = await baseConnection.getAccountInfo(machinePda);
+      if (l1Info && l1Info.data.length >= 1559) {
+        decoded = decodeMachineConfig(l1Info.data, true);
+      }
+    }
+
+    if (decoded) {
+      const stockedMints = decoded.slots
+        .filter((s) => s.inStock)
+        .map((s) => s.prizeMint);
+      if (stockedMints.length > 0) {
+        const metaMap = await fetchOnchainPrizeMetadata(stockedMints);
+        decoded.slots = decoded.slots.map((slot) => {
+          const meta = metaMap[slot.prizeMint.toBase58()];
+          if (!meta) return slot;
+          return {
+            ...slot,
+            name: meta.name || slot.name,
+            symbol: meta.symbol || slot.symbol,
+            image: meta.image,
+          };
+        });
+      }
+      return decoded;
     }
   } catch (err) {
-    console.warn("Could not fetch onchain machine config, using calibrated defaults:", err);
+    console.warn("Could not fetch onchain machine config, using fallback:", err);
   }
 
   return {
@@ -173,8 +492,8 @@ export async function fetchMachineConfig(machineId: bigint = MACHINE_ID): Promis
     captureRadius: 65,
     bullseyeRadius: 25,
     playDurationSecs: BigInt(15),
-    totalPlays: BigInt(142),
-    totalWins: BigInt(38),
+    totalPlays: BigInt(0),
+    totalWins: BigInt(0),
     slots: getDefaultPrizeSlots(machinePda),
     bump,
     isDelegated: delegation.isDelegated,
@@ -182,50 +501,145 @@ export async function fetchMachineConfig(machineId: bigint = MACHINE_ID): Promis
 }
 
 /**
- * Fetches player session state, or returns initialized default for a connected wallet.
+ * Fetches and decodes the real onchain PlayerSession (returns null if not yet initialized).
  */
 export async function fetchPlayerSession(
   owner: PublicKey,
   machinePda: PublicKey
-): Promise<PlayerSessionData> {
-  const [sessionPda, bump] = getSessionPda(machinePda, owner);
+): Promise<PlayerSessionData | null> {
+  const [sessionPda] = getSessionPda(machinePda, owner);
   const delegation = await getDelegationStatus(sessionPda);
   const activeConn = delegation.isDelegated ? erConnection : baseConnection;
 
   try {
     const accInfo = await activeConn.getAccountInfo(sessionPda);
-    if (accInfo && accInfo.data.length > 0) {
-      console.log("Found onchain PlayerSession account, size:", accInfo.data.length);
+    if (accInfo && accInfo.data.length >= 210) {
+      return decodePlayerSession(accInfo.data, delegation.isDelegated);
+    }
+    if (delegation.isDelegated) {
+      const l1Info = await baseConnection.getAccountInfo(sessionPda);
+      if (l1Info && l1Info.data.length >= 210) {
+        return decodePlayerSession(l1Info.data, true);
+      }
     }
   } catch (err) {
     console.warn("Player session not yet initialized onchain:", err);
   }
 
-  return {
-    machine: machinePda,
-    owner,
-    sessionKey: PublicKey.default,
-    sessionExpiry: BigInt(0),
-    usdcBalance: BigInt(10_000_000), // $10.00 default starting test balance
-    cumulativeDepositedUsdc: BigInt(10_000_000),
-    cumulativeWithdrawnUsdc: BigInt(0),
-    clawX: SPAWN_X,
-    clawZ: SPAWN_Z,
-    state: "Idle",
-    playExpiresAt: BigInt(0),
-    targetSlot: 0,
-    isBullseye: false,
-    lastVrfRoll: 0,
-    lastOutcome: "None",
-    claimNonce: BigInt(0),
-    pendingClaimMint: PublicKey.default,
-    pendingClaimAmount: BigInt(0),
-    vrfRequestNonce: BigInt(0),
-    playsCount: BigInt(0),
-    winsCount: BigInt(0),
-    bump,
-    isDelegated: delegation.isDelegated,
-  };
+  return null;
+}
+
+/**
+ * Polls MagicBlock ER until `PlayerSession.state` leaves `AwaitingVrf`.
+ */
+export async function waitForVrfResolution(
+  owner: PublicKey,
+  machinePda: PublicKey,
+  expectedNonce: bigint,
+  timeoutMs: number = 15_000
+): Promise<PlayerSessionData | null> {
+  const [sessionPda] = getSessionPda(machinePda, owner);
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const info = await erConnection.getAccountInfo(sessionPda);
+    if (info && info.data.length >= 210) {
+      const decoded = decodePlayerSession(info.data, true);
+      if (
+        decoded.vrfRequestNonce >= expectedNonce &&
+        decoded.state !== "AwaitingVrf"
+      ) {
+        return decoded;
+      }
+    }
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  return null;
+}
+
+/**
+ * Polls Solana L1 until MagicBlock ER commits `PlayerSession.claimNonce >= expectedNonce`.
+ */
+export async function waitForL1ClaimCommit(
+  owner: PublicKey,
+  machinePda: PublicKey,
+  expectedNonce: bigint,
+  timeoutMs: number = 25_000
+): Promise<boolean> {
+  const [sessionPda] = getSessionPda(machinePda, owner);
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const info = await baseConnection.getAccountInfo(sessionPda);
+    if (info && info.data.length >= 210) {
+      const decoded = decodePlayerSession(info.data, true);
+      if (decoded.claimNonce >= expectedNonce) {
+        return true;
+      }
+    }
+    await new Promise((r) => setTimeout(r, 700));
+  }
+  return false;
+}
+
+/**
+ * Polls Solana L1 until `PlayerSession` owner returns from Delegation Program to `PROGRAM_ID`.
+ */
+export async function waitForSessionUndelegated(
+  owner: PublicKey,
+  machinePda: PublicKey,
+  timeoutMs: number = 20_000
+): Promise<boolean> {
+  const [sessionPda] = getSessionPda(machinePda, owner);
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const info = await baseConnection.getAccountInfo(sessionPda);
+    if (info && info.owner.equals(PROGRAM_ID)) {
+      return true;
+    }
+    await new Promise((r) => setTimeout(r, 700));
+  }
+  return false;
+}
+
+/**
+ * Reads `PlayerLedger.last_claimed_nonce` on L1 to check if Magic Action already settled a claim.
+ */
+export async function fetchPlayerLedgerLastClaimedNonce(
+  owner: PublicKey,
+  machinePda: PublicKey
+): Promise<bigint> {
+  const [ledgerPda] = getLedgerPda(machinePda, owner);
+  const info = await baseConnection.getAccountInfo(ledgerPda);
+  if (!info || info.data.length < 96) return BigInt(0);
+  // Layout: 8 (disc) + 32 (machine) + 32 (owner) + 8 (total_deposited) + 8 (total_withdrawn) + 8 (last_claimed_nonce)
+  const view = new DataView(
+    info.data.buffer,
+    info.data.byteOffset,
+    info.data.byteLength
+  );
+  return view.getBigUint64(88, true);
+}
+
+/**
+ * Reads the player's L1 Test USDC wallet balance (in USD dollars).
+ */
+export async function fetchWalletUsdcBalance(
+  owner: PublicKey,
+  usdcMint: PublicKey
+): Promise<number> {
+  try {
+    const ata = getAssociatedTokenAddressSync(usdcMint, owner);
+    const info = await baseConnection.getAccountInfo(ata);
+    if (!info || info.data.length < 72) return 0;
+    const view = new DataView(
+      info.data.buffer,
+      info.data.byteOffset,
+      info.data.byteLength
+    );
+    const raw = view.getBigUint64(64, true);
+    return Number(raw) / 1_000_000;
+  } catch {
+    return 0;
+  }
 }
 
 function toBuffer(data: Uint8Array): Buffer {
@@ -238,6 +652,7 @@ function toBuffer(data: Uint8Array): Buffer {
 export function createInitAndDepositSessionIx(
   owner: PublicKey,
   machinePda: PublicKey,
+  usdcMint: PublicKey,
   depositUsdc: bigint,
   sessionKey: PublicKey,
   sessionDurationSecs: bigint = BigInt(86400)
@@ -246,7 +661,6 @@ export function createInitAndDepositSessionIx(
   const [playerLedger] = getLedgerPda(machinePda, owner);
   const [vaultAuthority] = getVaultAuthorityPda(machinePda);
 
-  const usdcMint = new PublicKey("4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU");
   const ownerUsdcAta = getAssociatedTokenAddressSync(usdcMint, owner);
   const usdcVault = getAssociatedTokenAddressSync(usdcMint, vaultAuthority, true);
 
@@ -433,16 +847,119 @@ export function createClaimPrizeIx(
     { pubkey: signer, isSigner: true, isWritable: true },
     { pubkey: machinePda, isSigner: false, isWritable: false },
     { pubkey: playerSession, isSigner: false, isWritable: true },
-    { pubkey: playerLedger, isSigner: false, isWritable: true },
+    { pubkey: playerLedger, isSigner: false, isWritable: false },
     { pubkey: vaultAuthority, isSigner: false, isWritable: false },
-    { pubkey: prizeVaultAta, isSigner: false, isWritable: true },
-    { pubkey: ownerPrizeAta, isSigner: false, isWritable: true },
+    { pubkey: prizeVaultAta, isSigner: false, isWritable: false },
+    { pubkey: ownerPrizeAta, isSigner: false, isWritable: false },
     { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
     { pubkey: MAGIC_PROGRAM_ID, isSigner: false, isWritable: false },
-    { pubkey: MAGIC_CONTEXT_ID, isSigner: false, isWritable: false },
+    { pubkey: MAGIC_CONTEXT_ID, isSigner: false, isWritable: true },
   ];
 
   return new TransactionInstruction({ programId: PROGRAM_ID, keys, data: toBuffer(disc) });
+}
+
+/**
+ * Builds `execute_l1_prize_claim` instruction on Solana L1 (permissionless finalizer).
+ */
+export function createExecuteL1PrizeClaimIx(
+  machinePda: PublicKey,
+  owner: PublicKey,
+  prizeMint: PublicKey
+): TransactionInstruction {
+  const [playerSession] = getSessionPda(machinePda, owner);
+  const [playerLedger] = getLedgerPda(machinePda, owner);
+  const [vaultAuthority] = getVaultAuthorityPda(machinePda);
+
+  const prizeVaultAta = getAssociatedTokenAddressSync(prizeMint, vaultAuthority, true);
+  const ownerPrizeAta = getAssociatedTokenAddressSync(prizeMint, owner);
+
+  // Discriminator: [180, 218, 166, 112, 103, 118, 2, 210]
+  const disc = new Uint8Array([180, 218, 166, 112, 103, 118, 2, 210]);
+
+  return new TransactionInstruction({
+    programId: PROGRAM_ID,
+    keys: [
+      { pubkey: machinePda, isSigner: false, isWritable: false },
+      { pubkey: playerSession, isSigner: false, isWritable: false },
+      { pubkey: playerLedger, isSigner: false, isWritable: true },
+      { pubkey: vaultAuthority, isSigner: false, isWritable: false },
+      { pubkey: prizeVaultAta, isSigner: false, isWritable: true },
+      { pubkey: ownerPrizeAta, isSigner: false, isWritable: true },
+      { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+    ],
+    data: toBuffer(disc),
+  });
+}
+
+/**
+ * Builds `request_withdraw_and_undelegate` instruction on MagicBlock ER.
+ */
+export function createRequestWithdrawAndUndelegateIx(
+  owner: PublicKey,
+  machinePda: PublicKey,
+  usdcMint: PublicKey,
+  amountUsdc: bigint = BigInt(0)
+): TransactionInstruction {
+  const [playerSession] = getSessionPda(machinePda, owner);
+  const [playerLedger] = getLedgerPda(machinePda, owner);
+  const [vaultAuthority] = getVaultAuthorityPda(machinePda);
+  const usdcVault = getAssociatedTokenAddressSync(usdcMint, vaultAuthority, true);
+  const ownerUsdcAta = getAssociatedTokenAddressSync(usdcMint, owner);
+
+  // Discriminator: [159, 154, 91, 237, 43, 133, 226, 184]
+  const data = new Uint8Array(8 + 8);
+  data.set([159, 154, 91, 237, 43, 133, 226, 184], 0);
+  new DataView(data.buffer).setBigUint64(8, BigInt(amountUsdc), true);
+
+  return new TransactionInstruction({
+    programId: PROGRAM_ID,
+    keys: [
+      { pubkey: owner, isSigner: true, isWritable: true },
+      { pubkey: playerSession, isSigner: false, isWritable: true },
+      { pubkey: machinePda, isSigner: false, isWritable: false },
+      { pubkey: playerLedger, isSigner: false, isWritable: false },
+      { pubkey: vaultAuthority, isSigner: false, isWritable: false },
+      { pubkey: usdcVault, isSigner: false, isWritable: false },
+      { pubkey: ownerUsdcAta, isSigner: false, isWritable: false },
+      { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: MAGIC_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: MAGIC_CONTEXT_ID, isSigner: false, isWritable: true },
+    ],
+    data: toBuffer(data),
+  });
+}
+
+/**
+ * Builds `execute_l1_usdc_withdraw` instruction on Solana L1 (permissionless finalizer).
+ */
+export function createExecuteL1UsdcWithdrawIx(
+  machinePda: PublicKey,
+  owner: PublicKey,
+  usdcMint: PublicKey
+): TransactionInstruction {
+  const [playerSession] = getSessionPda(machinePda, owner);
+  const [playerLedger] = getLedgerPda(machinePda, owner);
+  const [vaultAuthority] = getVaultAuthorityPda(machinePda);
+  const usdcVault = getAssociatedTokenAddressSync(usdcMint, vaultAuthority, true);
+  const ownerUsdcAta = getAssociatedTokenAddressSync(usdcMint, owner);
+
+  // Discriminator: [48, 134, 32, 123, 133, 138, 144, 169]
+  const disc = new Uint8Array([48, 134, 32, 123, 133, 138, 144, 169]);
+
+  return new TransactionInstruction({
+    programId: PROGRAM_ID,
+    keys: [
+      { pubkey: machinePda, isSigner: false, isWritable: false },
+      { pubkey: playerSession, isSigner: false, isWritable: false },
+      { pubkey: playerLedger, isSigner: false, isWritable: true },
+      { pubkey: vaultAuthority, isSigner: false, isWritable: false },
+      { pubkey: usdcVault, isSigner: false, isWritable: true },
+      { pubkey: ownerUsdcAta, isSigner: false, isWritable: true },
+      { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+    ],
+    data: toBuffer(disc),
+  });
 }
 
 /**

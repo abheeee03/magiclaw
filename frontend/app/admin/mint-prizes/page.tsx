@@ -27,13 +27,15 @@ import {
   ExternalLink,
   RefreshCw,
   ArrowRight,
+  Pencil,
 } from "lucide-react";
 import { AdminShell } from "../../../components/admin/AdminShell";
-import { baseConnection } from "../../../lib/solana";
+import { baseConnection, confirmTx } from "../../../lib/solana";
 import {
   WalletTokenInfo,
   createCreateMasterEditionV3Ix,
   createCreateMetadataV3Ix,
+  createUpdateMetadataV2Ix,
   fetchWalletTokenAccounts,
 } from "../../../lib/adminSolana";
 
@@ -99,23 +101,29 @@ export default function MintPrizesPage() {
   const [loadingTokens, setLoadingTokens] = useState(false);
   const [copiedMint, setCopiedMint] = useState<string | null>(null);
   const [mintMoreAmount, setMintMoreAmount] = useState<Record<string, string>>({});
+  const [editingMint, setEditingMint] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editSymbol, setEditSymbol] = useState("");
+  const [editUri, setEditUri] = useState("");
+
+  const publicKeyBase58 = publicKey?.toBase58() ?? null;
 
   const refreshWalletTokens = useCallback(async () => {
     setSavedMints(loadSavedMints());
-    if (!publicKey) {
+    if (!publicKeyBase58) {
       setWalletTokens([]);
       return;
     }
     setLoadingTokens(true);
     try {
-      const list = await fetchWalletTokenAccounts(publicKey);
+      const list = await fetchWalletTokenAccounts(new PublicKey(publicKeyBase58));
       setWalletTokens(list);
     } catch (err) {
       console.error("Failed to fetch wallet tokens:", err);
     } finally {
       setLoadingTokens(false);
     }
-  }, [publicKey]);
+  }, [publicKeyBase58]);
 
   useEffect(() => {
     refreshWalletTokens();
@@ -238,17 +246,14 @@ export default function MintPrizesPage() {
         }
       }
 
-      const { blockhash, lastValidBlockHeight } =
+      const { blockhash } =
         await baseConnection.getLatestBlockhash("confirmed");
       tx.recentBlockhash = blockhash;
       tx.feePayer = publicKey;
       tx.partialSign(mintKeypair);
 
       const sig = await sendTransaction(tx, baseConnection);
-      await baseConnection.confirmTransaction(
-        { signature: sig, blockhash, lastValidBlockHeight },
-        "confirmed"
-      );
+      await confirmTx(baseConnection, sig);
 
       const mintAddress = mintKeypair.publicKey.toBase58();
       saveMintMeta({
@@ -290,16 +295,13 @@ export default function MintPrizesPage() {
       const tx = new Transaction().add(
         createMintToInstruction(mintPk, ata, publicKey, raw)
       );
-      const { blockhash, lastValidBlockHeight } =
+      const { blockhash } =
         await baseConnection.getLatestBlockhash("confirmed");
       tx.recentBlockhash = blockhash;
       tx.feePayer = publicKey;
 
       const sig = await sendTransaction(tx, baseConnection);
-      await baseConnection.confirmTransaction(
-        { signature: sig, blockhash, lastValidBlockHeight },
-        "confirmed"
-      );
+      await confirmTx(baseConnection, sig);
 
       setStatusMsg({
         type: "ok",
@@ -319,6 +321,63 @@ export default function MintPrizesPage() {
     navigator.clipboard.writeText(text);
     setCopiedMint(text);
     setTimeout(() => setCopiedMint(null), 1500);
+  };
+
+  const openEditMeta = (t: WalletTokenInfo, meta?: SavedMintMeta) => {
+    setEditingMint(t.mint);
+    setEditName(meta?.name || "ClawVault Test USDC");
+    setEditSymbol(meta?.symbol || "USDC");
+    setEditUri("");
+  };
+
+  const handleUpdateMetadata = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!publicKey || !editingMint) return;
+    setSubmitting(true);
+    setStatusMsg(null);
+    try {
+      const mintPk = new PublicKey(editingMint);
+      const tx = new Transaction().add(
+        createUpdateMetadataV2Ix({
+          mint: mintPk,
+          updateAuthority: publicKey,
+          name: editName.trim(),
+          symbol: editSymbol.trim(),
+          uri: editUri.trim(),
+        })
+      );
+      const { blockhash } =
+        await baseConnection.getLatestBlockhash("confirmed");
+      tx.recentBlockhash = blockhash;
+      tx.feePayer = publicKey;
+
+      const sig = await sendTransaction(tx, baseConnection);
+      await confirmTx(baseConnection, sig);
+
+      const existing = savedMints.find((m) => m.mint === editingMint);
+      const tokenInfo = walletTokens.find((t) => t.mint === editingMint);
+      saveMintMeta({
+        mint: editingMint,
+        name: editName.trim(),
+        symbol: editSymbol.trim(),
+        decimals: tokenInfo?.decimals ?? existing?.decimals ?? 6,
+        isNft: existing?.isNft ?? (tokenInfo?.decimals === 0 && tokenInfo?.amountRaw === BigInt(1)),
+        createdAt: existing?.createdAt ?? Date.now(),
+      });
+
+      setStatusMsg({
+        type: "ok",
+        text: `Updated metadata for ${editSymbol.trim()} (${editingMint.slice(0, 8)}...)`,
+        sig,
+      });
+      setEditingMint(null);
+      await refreshWalletTokens();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setStatusMsg({ type: "err", text: msg });
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const metaByMint = new Map(savedMints.map((m) => [m.mint, m]));
@@ -653,7 +712,63 @@ export default function MintPrizesPage() {
                             </button>
                           </div>
                         )}
+
+                        <button
+                          type="button"
+                          onClick={() => openEditMeta(t, meta)}
+                          className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 text-[11px] font-mono flex items-center gap-1 cursor-pointer border border-slate-700"
+                          title="Update Name / Symbol / Icon URI"
+                        >
+                          <Pencil className="w-3 h-3" />
+                          Update Meta
+                        </button>
                       </div>
+
+                      {editingMint === t.mint && (
+                        <form
+                          onSubmit={handleUpdateMetadata}
+                          className="w-full mt-2 pt-3 border-t border-slate-800 grid grid-cols-1 sm:grid-cols-4 gap-2"
+                        >
+                          <input
+                            value={editName}
+                            onChange={(e) => setEditName(e.target.value)}
+                            placeholder="Name"
+                            maxLength={32}
+                            required
+                            className="rounded-lg bg-slate-900 border border-slate-700 px-2.5 py-1.5 text-xs text-white font-mono"
+                          />
+                          <input
+                            value={editSymbol}
+                            onChange={(e) => setEditSymbol(e.target.value)}
+                            placeholder="Symbol"
+                            maxLength={10}
+                            required
+                            className="rounded-lg bg-slate-900 border border-slate-700 px-2.5 py-1.5 text-xs text-white font-mono"
+                          />
+                          <input
+                            value={editUri}
+                            onChange={(e) => setEditUri(e.target.value)}
+                            placeholder="https://...metadata.json"
+                            className="sm:col-span-2 rounded-lg bg-slate-900 border border-slate-700 px-2.5 py-1.5 text-xs text-white font-mono"
+                          />
+                          <div className="sm:col-span-4 flex justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setEditingMint(null)}
+                              className="px-3 py-1 rounded-lg bg-slate-800 text-slate-300 text-xs font-mono cursor-pointer"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="submit"
+                              disabled={submitting}
+                              className="px-4 py-1 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-arcade font-bold cursor-pointer"
+                            >
+                              {submitting ? "UPDATING..." : "SAVE METADATA ONCHAIN"}
+                            </button>
+                          </div>
+                        </form>
+                      )}
                     </div>
                   );
                 })}

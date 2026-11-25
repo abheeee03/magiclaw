@@ -19,6 +19,7 @@ export interface PrizeSlot {
   name?: string;
   symbol?: string;
   icon?: string;
+  image?: string;
 }
 
 export interface MachineConfigData {
@@ -72,7 +73,9 @@ export interface WonPrizeInfo {
   name: string;
   symbol: string;
   icon: string;
+  image?: string;
   amount: string;
+  isNft?: boolean;
   mint: string;
   isBullseye: boolean;
   vrfRoll: number;
