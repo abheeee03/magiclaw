@@ -2,9 +2,8 @@
 
 import React from "react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
-import { Shield, Camera, Crosshair } from "lucide-react";
+import { Shield, Camera } from "lucide-react";
 import { VirtualJoystick } from "./VirtualJoystick";
-import { TelemetryHUD } from "./TelemetryHUD";
 import { TicketBadge } from "../TicketBadge";
 import { GameButton } from "../Button";
 import { formatTickets } from "../modals/TicketsModal";
@@ -22,9 +21,7 @@ export interface ArcadeHUDProps {
   sessionKeyMismatch?: boolean;
   ticketBalance: number;
   activeCamMode: CamMode;
-  showProjection?: boolean;
   inStockCount: number;
-  isMuted: boolean;
   toastMessage: { title: string; sub: string; icon: string } | null;
   gameStateText: string;
   erLatencyMs: number;
@@ -34,9 +31,8 @@ export interface ArcadeHUDProps {
   onOpenTicketsModal: () => void;
   onOpenWinModal?: () => void;
   onCamModeChange: (mode: CamMode) => void;
-  onToggleProjection?: () => void;
   onOpenOddsModal: () => void;
-  onToggleMute: () => void;
+  onOpenSettingsModal: () => void;
   onJoystickMove: (vector: { x: number; y: number }) => void;
   onTriggerDrop: () => void;
 }
@@ -51,9 +47,7 @@ export const ArcadeHUD: React.FC<ArcadeHUDProps> = ({
   sessionKeyMismatch = false,
   ticketBalance,
   activeCamMode,
-  showProjection = false,
   inStockCount,
-  isMuted,
   toastMessage,
   gameStateText,
   erLatencyMs,
@@ -63,9 +57,8 @@ export const ArcadeHUD: React.FC<ArcadeHUDProps> = ({
   onOpenTicketsModal,
   onOpenWinModal,
   onCamModeChange,
-  onToggleProjection,
   onOpenOddsModal,
-  onToggleMute,
+  onOpenSettingsModal,
   onJoystickMove,
   onTriggerDrop,
 }) => {
@@ -111,19 +104,6 @@ export const ArcadeHUD: React.FC<ArcadeHUDProps> = ({
           </GameButton>
 
           <GameButton
-            variant={showProjection ? "danger" : "primary"}
-            size="sm"
-            onClick={onToggleProjection}
-            title="Toggle Red Drop Target Projection"
-            leftIcon={<Crosshair className="w-3.5 h-3.5" />}
-          >
-            <span className="hidden sm:inline mr-1">Laser</span>
-            <span className="uppercase text-xs font-black">
-              {showProjection ? "ON" : "OFF"}
-            </span>
-          </GameButton>
-
-          <GameButton
             variant="accent"
             size="sm"
             onClick={onOpenOddsModal}
@@ -147,14 +127,14 @@ export const ArcadeHUD: React.FC<ArcadeHUDProps> = ({
 
           <button
             type="button"
-            onClick={onToggleMute}
-            title={isMuted ? "Unmute Audio" : "Mute Audio"}
-            aria-label={isMuted ? "Unmute Audio" : "Mute Audio"}
+            onClick={onOpenSettingsModal}
+            title="Settings (Audio & Laser)"
+            aria-label="Open Settings"
             className="cursor-pointer bg-transparent border-0 p-0 inline-flex items-center justify-center transition-transform hover:scale-105 active:scale-95 focus:outline-none"
           >
             <img
-              src={isMuted ? "/ui/mute.png" : "/ui/speak.png"}
-              alt={isMuted ? "Muted" : "Sound On"}
+              src="/ui/settings.png"
+              alt="Settings"
               className="w-9 h-9 sm:w-10 sm:h-10 object-contain drop-shadow-[0_3px_4px_rgba(0,0,0,0.35)]"
             />
           </button>
@@ -211,13 +191,13 @@ export const ArcadeHUD: React.FC<ArcadeHUDProps> = ({
                 {!isOnchainActive
                   ? "🎟️ Click Tickets (top left) to airdrop Test USDC & buy tickets!"
                   : sessionKeyMismatch
-                  ? "🔑 Session key mismatch — click to re-sync session"
-                  : "🎟️ Out of tickets! Click to buy more"}
+                    ? "🔑 Session key mismatch — click to re-sync session"
+                    : "🎟️ Out of tickets! Click to buy more"}
               </GameButton>
             ) : (
               <div className="rounded-2xl bg-[#FDF8EE] border-[3px] border-[#3E200C] shadow-[0_4px_0_#3E200C] px-3.5 py-2 text-[11px] sm:text-xs font-extrabold text-[#3E200C] text-center">
-                🔒 Connect your Solana Devnet wallet (top right) to play and
-                win real tokens &amp; NFTs.
+                🔒 Connect your Solana Devnet wallet (top right) to play and win
+                real tokens &amp; NFTs.
               </div>
             )}
           </div>
@@ -291,16 +271,6 @@ export const ArcadeHUD: React.FC<ArcadeHUDProps> = ({
               </div>
             </GameButton>
           </div>
-        </div>
-
-        <div className="pointer-events-auto flex justify-center">
-          <TelemetryHUD
-            erLatencyMs={erLatencyMs}
-            isDelegated={isMachineDelegated}
-            vrfStatus={vrfStatus}
-            pythStatus="Live"
-            lastTxSignature={lastSignature}
-          />
         </div>
       </footer>
     </>

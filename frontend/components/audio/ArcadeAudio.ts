@@ -1,30 +1,74 @@
 /**
  * Procedural Web Audio API Sound Engine (MAGICLAW)
  * Synthesizes arcade cabinet power-on, neon hum, gantry, winch, pneumatic claw,
- * box clacks, coin drop, and win/miss chimes without external audio files.
+ * box clacks, coin drop, and win/miss chimes without external audio files,
+ * with independent Music and In-Game SFX volume controls.
  */
 
 export class ArcadeAudio {
   private ctx: AudioContext | null = null;
   public muted: boolean = false;
+  public musicEnabled: boolean = true;
+  public sfxEnabled: boolean = true;
+  public musicVolume: number = 0.4; // 0..1 (scaled to comfortable max BGM gain)
+  public sfxVolume: number = 0.85; // 0..1
+  private sfxMasterGain: GainNode | null = null;
   private motorOsc: OscillatorNode | null = null;
   private motorGain: GainNode | null = null;
   private winchOsc: OscillatorNode | null = null;
   private winchGain: GainNode | null = null;
   private bgm: HTMLAudioElement | null = null;
 
+  private get isSfxActive(): boolean {
+    return !this.muted && this.sfxEnabled && this.sfxVolume > 0;
+  }
+
+  private get effectiveMusicGain(): number {
+    if (this.muted || !this.musicEnabled) return 0;
+    return Math.min(1, Math.max(0, this.musicVolume)) * 0.6;
+  }
+
+  private get effectiveSfxGain(): number {
+    if (this.muted || !this.sfxEnabled) return 0;
+    return Math.min(1, Math.max(0, this.sfxVolume));
+  }
+
+  private getSfxDest(): AudioNode {
+    if (!this.ctx) {
+      throw new Error("AudioContext not initialized");
+    }
+    return this.sfxMasterGain ?? this.ctx.destination;
+  }
+
+  private syncBgmState() {
+    if (!this.bgm) return;
+    const vol = this.effectiveMusicGain;
+    this.bgm.volume = vol;
+    this.bgm.muted = vol <= 0.001;
+    if (vol <= 0.001) {
+      this.bgm.pause();
+    } else if (this.bgm.paused) {
+      this.bgm.play().catch(() => {});
+    }
+  }
+
+  private syncSfxMasterGain() {
+    if (!this.ctx || !this.sfxMasterGain) return;
+    this.sfxMasterGain.gain.setTargetAtTime(
+      this.effectiveSfxGain,
+      this.ctx.currentTime,
+      0.02
+    );
+  }
+
   private startBgm() {
-    if (typeof window === "undefined" || this.muted) return;
+    if (typeof window === "undefined") return;
     if (!this.bgm) {
       this.bgm = new Audio("/bgm.mp3");
       this.bgm.loop = true;
-      this.bgm.volume = 0.24;
       this.bgm.preload = "auto";
     }
-    this.bgm.muted = this.muted;
-    if (this.bgm.paused) {
-      this.bgm.play().catch(() => {});
-    }
+    this.syncBgmState();
   }
 
   public init() {
@@ -44,6 +88,9 @@ export class ArcadeAudio {
           .webkitAudioContext;
       if (!AudioCtx) return;
       this.ctx = new AudioCtx();
+      this.sfxMasterGain = this.ctx.createGain();
+      this.sfxMasterGain.gain.value = this.effectiveSfxGain;
+      this.sfxMasterGain.connect(this.ctx.destination);
       this.setupContinuousNodes();
     } catch (err) {
       console.warn("Web Audio unavailable:", err);
@@ -52,6 +99,7 @@ export class ArcadeAudio {
 
   private setupContinuousNodes() {
     if (!this.ctx) return;
+    const dest = this.getSfxDest();
 
     // Gantry stepper whir
     this.motorOsc = this.ctx.createOscillator();
@@ -68,7 +116,7 @@ export class ArcadeAudio {
 
     this.motorOsc.connect(mFilter);
     mFilter.connect(this.motorGain);
-    this.motorGain.connect(this.ctx.destination);
+    this.motorGain.connect(dest);
     this.motorOsc.start();
 
     // Winch motor hum
@@ -85,7 +133,7 @@ export class ArcadeAudio {
 
     this.winchOsc.connect(wFilter);
     wFilter.connect(this.winchGain);
-    this.winchGain.connect(this.ctx.destination);
+    this.winchGain.connect(dest);
     this.winchOsc.start();
   }
 
@@ -93,16 +141,52 @@ export class ArcadeAudio {
     void _level;
   }
 
+  public setMusicVolume(vol: number) {
+    this.musicVolume = Math.min(1, Math.max(0, vol));
+    if (
+      this.musicVolume > 0 &&
+      this.musicEnabled &&
+      !this.muted &&
+      typeof window !== "undefined"
+    ) {
+      this.startBgm();
+    } else {
+      this.syncBgmState();
+    }
+  }
+
+  public setSfxVolume(vol: number) {
+    this.sfxVolume = Math.min(1, Math.max(0, vol));
+    this.syncSfxMasterGain();
+  }
+
+  public setMusicEnabled(enabled: boolean) {
+    this.musicEnabled = enabled;
+    if (
+      enabled &&
+      this.musicVolume > 0 &&
+      !this.muted &&
+      typeof window !== "undefined"
+    ) {
+      this.startBgm();
+    } else {
+      this.syncBgmState();
+    }
+  }
+
+  public setSfxEnabled(enabled: boolean) {
+    this.sfxEnabled = enabled;
+    this.syncSfxMasterGain();
+    if (!enabled && this.ctx) {
+      this.updateMotor(0);
+      this.setWinch(0);
+    }
+  }
+
   public setMuted(m: boolean) {
     this.muted = m;
-    if (this.bgm) {
-      this.bgm.muted = m;
-      if (m) {
-        this.bgm.pause();
-      } else {
-        this.bgm.play().catch(() => {});
-      }
-    }
+    this.syncBgmState();
+    this.syncSfxMasterGain();
     if (!this.ctx) return;
     if (m) {
       this.updateMotor(0);
@@ -113,7 +197,9 @@ export class ArcadeAudio {
   public updateMotor(speedNorm: number) {
     if (!this.ctx || !this.motorGain || !this.motorOsc) return;
     const now = this.ctx.currentTime;
-    const clamped = this.muted ? 0 : Math.min(1, Math.max(0, speedNorm));
+    const clamped = !this.isSfxActive
+      ? 0
+      : Math.min(1, Math.max(0, speedNorm));
     const targetGain = clamped > 0.02 ? 0.025 + clamped * 0.045 : 0.0001;
     this.motorGain.gain.setTargetAtTime(targetGain, now, 0.04);
     this.motorOsc.frequency.setTargetAtTime(102 + clamped * 58, now, 0.05);
@@ -122,7 +208,7 @@ export class ArcadeAudio {
   public setWinch(dir: number) {
     if (!this.ctx || !this.winchGain || !this.winchOsc) return;
     const now = this.ctx.currentTime;
-    if (this.muted || dir === 0) {
+    if (!this.isSfxActive || dir === 0) {
       this.winchGain.gain.setTargetAtTime(0.0001, now, 0.04);
       return;
     }
@@ -132,8 +218,9 @@ export class ArcadeAudio {
 
   public playCoin() {
     this.init();
-    if (!this.ctx || this.muted) return;
+    if (!this.ctx || !this.isSfxActive) return;
     const now = this.ctx.currentTime;
+    const dest = this.getSfxDest();
     [1567.98, 2093.0].forEach((freq, i) => {
       if (!this.ctx) return;
       const t0 = now + i * 0.075;
@@ -145,15 +232,16 @@ export class ArcadeAudio {
       gain.gain.linearRampToValueAtTime(0.11, t0 + 0.008);
       gain.gain.exponentialRampToValueAtTime(0.0008, t0 + 0.24);
       osc.connect(gain);
-      gain.connect(this.ctx.destination);
+      gain.connect(dest);
       osc.start(t0);
       osc.stop(t0 + 0.26);
     });
   }
 
   public playBreakerSwitch() {
-    if (!this.ctx || this.muted || this.ctx.state !== "running") return;
+    if (!this.ctx || !this.isSfxActive || this.ctx.state !== "running") return;
     const now = this.ctx.currentTime;
+    const dest = this.getSfxDest();
     const thud = this.ctx.createOscillator();
     const thudGain = this.ctx.createGain();
     thud.type = "triangle";
@@ -162,7 +250,7 @@ export class ArcadeAudio {
     thudGain.gain.setValueAtTime(0.28, now);
     thudGain.gain.exponentialRampToValueAtTime(0.001, now + 0.11);
     thud.connect(thudGain);
-    thudGain.connect(this.ctx.destination);
+    thudGain.connect(dest);
     thud.start(now);
     thud.stop(now + 0.12);
 
@@ -183,13 +271,14 @@ export class ArcadeAudio {
     ng.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
     noise.connect(bp);
     bp.connect(ng);
-    ng.connect(this.ctx.destination);
+    ng.connect(dest);
     noise.start(now);
   }
 
   public playFluorescentFlicker(intensity: number = 0.7) {
-    if (!this.ctx || this.muted || this.ctx.state !== "running") return;
+    if (!this.ctx || !this.isSfxActive || this.ctx.state !== "running") return;
     const now = this.ctx.currentTime;
+    const dest = this.getSfxDest();
     const dur = 0.07;
     const bufLen = Math.floor(this.ctx.sampleRate * dur);
     const buf = this.ctx.createBuffer(1, bufLen, this.ctx.sampleRate);
@@ -208,7 +297,7 @@ export class ArcadeAudio {
     g.gain.exponentialRampToValueAtTime(0.001, now + dur);
     src.connect(hp);
     hp.connect(g);
-    g.connect(this.ctx.destination);
+    g.connect(dest);
     src.start(now);
 
     const hum = this.ctx.createOscillator();
@@ -218,14 +307,15 @@ export class ArcadeAudio {
     hg.gain.setValueAtTime(0.045 * intensity, now);
     hg.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
     hum.connect(hg);
-    hg.connect(this.ctx.destination);
+    hg.connect(dest);
     hum.start(now);
     hum.stop(now + 0.15);
   }
 
   public playNeonBuzz(baseFreq: number = 120) {
-    if (!this.ctx || this.muted || this.ctx.state !== "running") return;
+    if (!this.ctx || !this.isSfxActive || this.ctx.state !== "running") return;
     const now = this.ctx.currentTime;
+    const dest = this.getSfxDest();
     const osc = this.ctx.createOscillator();
     const filt = this.ctx.createBiquadFilter();
     const gain = this.ctx.createGain();
@@ -240,14 +330,15 @@ export class ArcadeAudio {
     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
     osc.connect(filt);
     filt.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(dest);
     osc.start(now);
     osc.stop(now + 0.3);
   }
 
   public playBootChime() {
-    if (!this.ctx || this.muted || this.ctx.state !== "running") return;
+    if (!this.ctx || !this.isSfxActive || this.ctx.state !== "running") return;
     const now = this.ctx.currentTime;
+    const dest = this.getSfxDest();
     const freqs = [392.0, 523.25, 659.25, 783.99, 1046.5];
     freqs.forEach((f, i) => {
       if (!this.ctx) return;
@@ -263,7 +354,7 @@ export class ArcadeAudio {
         t0 + (i === freqs.length - 1 ? 0.55 : 0.22)
       );
       osc.connect(gain);
-      gain.connect(this.ctx.destination);
+      gain.connect(dest);
       osc.start(t0);
       osc.stop(t0 + 0.6);
     });
@@ -271,8 +362,9 @@ export class ArcadeAudio {
 
   public playButtonClick() {
     this.init();
-    if (!this.ctx || this.muted) return;
+    if (!this.ctx || !this.isSfxActive) return;
     const now = this.ctx.currentTime;
+    const dest = this.getSfxDest();
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
     osc.type = "square";
@@ -281,15 +373,16 @@ export class ArcadeAudio {
     gain.gain.setValueAtTime(0.075, now);
     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.055);
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(dest);
     osc.start(now);
     osc.stop(now + 0.06);
   }
 
   public playPneumaticSnap(opening: boolean = false) {
     this.init();
-    if (!this.ctx || this.muted) return;
+    if (!this.ctx || !this.isSfxActive) return;
     const now = this.ctx.currentTime;
+    const dest = this.getSfxDest();
     const bufLen = Math.floor(this.ctx.sampleRate * 0.075);
     const buf = this.ctx.createBuffer(1, bufLen, this.ctx.sampleRate);
     const ch = buf.getChannelData(0);
@@ -309,18 +402,21 @@ export class ArcadeAudio {
     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
     noise.connect(filt);
     filt.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(dest);
     noise.start(now);
 
     const osc = this.ctx.createOscillator();
     const og = this.ctx.createGain();
     osc.type = "triangle";
     osc.frequency.setValueAtTime(opening ? 820 : 520, now);
-    osc.frequency.exponentialRampToValueAtTime(opening ? 540 : 210, now + 0.075);
+    osc.frequency.exponentialRampToValueAtTime(
+      opening ? 540 : 210,
+      now + 0.075
+    );
     og.gain.setValueAtTime(0.095, now);
     og.gain.exponentialRampToValueAtTime(0.001, now + 0.085);
     osc.connect(og);
-    og.connect(this.ctx.destination);
+    og.connect(dest);
     osc.start(now);
     osc.stop(now + 0.09);
   }
@@ -330,9 +426,10 @@ export class ArcadeAudio {
   }
 
   public playBoxClack(intensity: number = 0.5) {
-    if (!this.ctx || this.muted) return;
+    if (!this.ctx || !this.isSfxActive) return;
     const amp = Math.min(1, Math.max(0.1, intensity));
     const now = this.ctx.currentTime;
+    const dest = this.getSfxDest();
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
     osc.type = "triangle";
@@ -341,7 +438,7 @@ export class ArcadeAudio {
     gain.gain.setValueAtTime(0.07 * amp, now);
     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.065);
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(dest);
     osc.start(now);
     osc.stop(now + 0.07);
   }
@@ -351,8 +448,9 @@ export class ArcadeAudio {
   }
 
   public playTick(urgent: boolean = false) {
-    if (!this.ctx || this.muted) return;
+    if (!this.ctx || !this.isSfxActive) return;
     const now = this.ctx.currentTime;
+    const dest = this.getSfxDest();
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
     osc.type = "sine";
@@ -360,16 +458,19 @@ export class ArcadeAudio {
     gain.gain.setValueAtTime(0.055, now);
     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.055);
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(dest);
     osc.start(now);
     osc.stop(now + 0.06);
   }
 
   public playWinJingle() {
     this.init();
-    if (!this.ctx || this.muted) return;
+    if (!this.ctx || !this.isSfxActive) return;
     const now = this.ctx.currentTime;
-    const notes = [523.25, 659.25, 783.99, 1046.5, 880.0, 1046.5, 1318.5, 1567.98];
+    const dest = this.getSfxDest();
+    const notes = [
+      523.25, 659.25, 783.99, 1046.5, 880.0, 1046.5, 1318.5, 1567.98,
+    ];
     const times = [0.0, 0.09, 0.18, 0.28, 0.4, 0.5, 0.62, 0.76];
     const durs = [0.11, 0.11, 0.12, 0.14, 0.12, 0.14, 0.18, 0.46];
     notes.forEach((f, idx) => {
@@ -386,7 +487,7 @@ export class ArcadeAudio {
       g.gain.exponentialRampToValueAtTime(0.001, now + times[idx] + durs[idx]);
       o1.connect(g);
       o2.connect(g);
-      g.connect(this.ctx.destination);
+      g.connect(dest);
       o1.start(now + times[idx]);
       o2.start(now + times[idx]);
       o1.stop(now + times[idx] + durs[idx] + 0.03);
@@ -400,8 +501,9 @@ export class ArcadeAudio {
 
   public playMiss() {
     this.init();
-    if (!this.ctx || this.muted) return;
+    if (!this.ctx || !this.isSfxActive) return;
     const now = this.ctx.currentTime;
+    const dest = this.getSfxDest();
     [370, 330, 294, 247].forEach((f, i) => {
       if (!this.ctx) return;
       const o = this.ctx.createOscillator();
@@ -411,7 +513,7 @@ export class ArcadeAudio {
       g.gain.setValueAtTime(0.065, now + i * 0.12);
       g.gain.exponentialRampToValueAtTime(0.001, now + i * 0.12 + 0.15);
       o.connect(g);
-      g.connect(this.ctx.destination);
+      g.connect(dest);
       o.start(now + i * 0.12);
       o.stop(now + i * 0.12 + 0.17);
     });

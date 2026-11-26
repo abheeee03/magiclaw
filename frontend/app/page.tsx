@@ -8,6 +8,7 @@ import { ArcadeHUD } from "../components/hud/ArcadeHUD";
 import { PostWinModal } from "../components/modals/PostWinModal";
 import { VaultOddsModal } from "../components/modals/VaultOddsModal";
 import { TicketsModal } from "../components/modals/TicketsModal";
+import { SettingsModal } from "../components/modals/SettingsModal";
 import { LoadingScreen } from "../components/LoadingScreen";
 import { arcadeAudio } from "../components/audio/ArcadeAudio";
 import type {
@@ -75,7 +76,10 @@ export default function ClawVaultPage() {
   const [usdcBalance, setUsdcBalance] = useState<number>(0);
   const [walletUsdcBalance, setWalletUsdcBalance] = useState<number>(0);
 
-  const [isMuted, setIsMuted] = useState(false);
+  const [musicEnabled, setMusicEnabled] = useState(true);
+  const [sfxEnabled, setSfxEnabled] = useState(true);
+  const [musicVolume, setMusicVolume] = useState(0.4);
+  const [sfxVolume, setSfxVolume] = useState(0.85);
   const [activeCamMode, setActiveCamMode] = useState<CamMode>("hero");
   const [showProjection, setShowProjection] = useState(false);
   const [virtualJoyVector, setVirtualJoyVector] = useState({ x: 0, y: 0 });
@@ -121,6 +125,7 @@ export default function ClawVaultPage() {
   const [isOddsModalOpen, setIsOddsModalOpen] = useState(false);
   const [isPrizesZoomActive, setIsPrizesZoomActive] = useState(false);
   const [isTicketsModalOpen, setIsTicketsModalOpen] = useState(false);
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [wonPrize, setWonPrize] = useState<WonPrizeInfo | null>(null);
   const [isWinModalOpen, setIsWinModalOpen] = useState(false);
   const [isPendingClaimOnly, setIsPendingClaimOnly] = useState(false);
@@ -310,10 +315,160 @@ export default function ClawVaultPage() {
     return () => clearTimeout(t);
   }, [refreshMachineAndSession]);
 
-  const toggleMute = () => {
-    const nextMuted = !isMuted;
-    setIsMuted(nextMuted);
-    arcadeAudio.setMuted(nextMuted);
+  useEffect(() => {
+    const t = setTimeout(() => {
+      try {
+        const raw = window.localStorage.getItem("magiclaw_settings_v1");
+        if (raw) {
+          const parsed = JSON.parse(raw) as {
+            musicVolume?: number;
+            sfxVolume?: number;
+            musicEnabled?: boolean;
+            sfxEnabled?: boolean;
+            isMuted?: boolean;
+            showProjection?: boolean;
+          };
+          if (typeof parsed.musicVolume === "number") {
+            setMusicVolume(parsed.musicVolume);
+            arcadeAudio.setMusicVolume(parsed.musicVolume);
+          }
+          if (typeof parsed.sfxVolume === "number") {
+            setSfxVolume(parsed.sfxVolume);
+            arcadeAudio.setSfxVolume(parsed.sfxVolume);
+          }
+          const nextMusicEnabled =
+            typeof parsed.musicEnabled === "boolean"
+              ? parsed.musicEnabled
+              : parsed.isMuted === true
+              ? false
+              : true;
+          const nextSfxEnabled =
+            typeof parsed.sfxEnabled === "boolean"
+              ? parsed.sfxEnabled
+              : parsed.isMuted === true
+              ? false
+              : true;
+          setMusicEnabled(nextMusicEnabled);
+          setSfxEnabled(nextSfxEnabled);
+          arcadeAudio.setMusicEnabled(nextMusicEnabled);
+          arcadeAudio.setSfxEnabled(nextSfxEnabled);
+          if (typeof parsed.showProjection === "boolean") {
+            setShowProjection(parsed.showProjection);
+          }
+        }
+      } catch {
+        // Ignore malformed saved settings
+      }
+    }, 0);
+    return () => clearTimeout(t);
+  }, []);
+
+  const persistSettings = useCallback(
+    (next: {
+      musicVolume: number;
+      sfxVolume: number;
+      musicEnabled: boolean;
+      sfxEnabled: boolean;
+      showProjection: boolean;
+    }) => {
+      try {
+        window.localStorage.setItem("magiclaw_settings_v1", JSON.stringify(next));
+      } catch {
+        // Ignore storage errors
+      }
+    },
+    []
+  );
+
+  const handleMusicVolumeChange = (vol: number) => {
+    const enabled = vol > 0 ? true : musicEnabled;
+    setMusicVolume(vol);
+    setMusicEnabled(enabled);
+    arcadeAudio.setMusicEnabled(enabled);
+    arcadeAudio.setMusicVolume(vol);
+    persistSettings({
+      musicVolume: vol,
+      sfxVolume,
+      musicEnabled: enabled,
+      sfxEnabled,
+      showProjection,
+    });
+  };
+
+  const handleSfxVolumeChange = (vol: number) => {
+    const enabled = vol > 0 ? true : sfxEnabled;
+    setSfxVolume(vol);
+    setSfxEnabled(enabled);
+    arcadeAudio.setSfxEnabled(enabled);
+    arcadeAudio.setSfxVolume(vol);
+    persistSettings({
+      musicVolume,
+      sfxVolume: vol,
+      musicEnabled,
+      sfxEnabled: enabled,
+      showProjection,
+    });
+  };
+
+  const toggleMusicEnabled = () => {
+    const next = !musicEnabled;
+    setMusicEnabled(next);
+    arcadeAudio.setMusicEnabled(next);
+    persistSettings({
+      musicVolume,
+      sfxVolume,
+      musicEnabled: next,
+      sfxEnabled,
+      showProjection,
+    });
+  };
+
+  const toggleSfxEnabled = () => {
+    const next = !sfxEnabled;
+    setSfxEnabled(next);
+    arcadeAudio.setSfxEnabled(next);
+    if (next) arcadeAudio.playButtonClick();
+    persistSettings({
+      musicVolume,
+      sfxVolume,
+      musicEnabled,
+      sfxEnabled: next,
+      showProjection,
+    });
+  };
+
+  const toggleProjection = () => {
+    const next = !showProjection;
+    setShowProjection(next);
+    arcadeAudio.playButtonClick();
+    persistSettings({
+      musicVolume,
+      sfxVolume,
+      musicEnabled,
+      sfxEnabled,
+      showProjection: next,
+    });
+  };
+
+  const handleResetSettings = () => {
+    const defaults = {
+      musicVolume: 0.4,
+      sfxVolume: 0.85,
+      musicEnabled: true,
+      sfxEnabled: true,
+      showProjection: false,
+    };
+    setMusicVolume(defaults.musicVolume);
+    setSfxVolume(defaults.sfxVolume);
+    setMusicEnabled(defaults.musicEnabled);
+    setSfxEnabled(defaults.sfxEnabled);
+    setShowProjection(defaults.showProjection);
+    arcadeAudio.setMusicEnabled(defaults.musicEnabled);
+    arcadeAudio.setSfxEnabled(defaults.sfxEnabled);
+    arcadeAudio.setMusicVolume(defaults.musicVolume);
+    arcadeAudio.setSfxVolume(defaults.sfxVolume);
+    arcadeAudio.playButtonClick();
+    persistSettings(defaults);
   };
 
   // 1-Click Airdrop 10 Test USDC directly into user's wallet (separate from buying tickets)
@@ -1056,13 +1211,11 @@ export default function ClawVaultPage() {
         sessionKeyMismatch={Boolean(isOnchainActive && !sessionKeyMatches)}
         ticketBalance={ticketBalance}
         activeCamMode={activeCamMode}
-        showProjection={showProjection}
         inStockCount={
           machineConfig
             ? machineConfig.slots.filter((s) => s.inStock && !s.reserved).length
             : 0
         }
-        isMuted={isMuted}
         toastMessage={toastMessage}
         gameStateText={gameStateText}
         erLatencyMs={erLatencyMs}
@@ -1072,9 +1225,8 @@ export default function ClawVaultPage() {
         onOpenTicketsModal={() => setIsTicketsModalOpen(true)}
         onOpenWinModal={() => setIsWinModalOpen(true)}
         onCamModeChange={setActiveCamMode}
-        onToggleProjection={() => setShowProjection((v) => !v)}
         onOpenOddsModal={() => setIsPrizesZoomActive(true)}
-        onToggleMute={toggleMute}
+        onOpenSettingsModal={() => setIsSettingsModalOpen(true)}
         onJoystickMove={setVirtualJoyVector}
         onTriggerDrop={triggerDropBtn}
       />
@@ -1122,6 +1274,22 @@ export default function ClawVaultPage() {
         }}
         isDelegated={Boolean(machineConfig?.isDelegated)}
         slots={machineConfig?.slots}
+      />
+
+      <SettingsModal
+        isOpen={isSettingsModalOpen}
+        onClose={() => setIsSettingsModalOpen(false)}
+        musicVolume={musicVolume}
+        sfxVolume={sfxVolume}
+        musicEnabled={musicEnabled}
+        sfxEnabled={sfxEnabled}
+        showProjection={showProjection}
+        onMusicVolumeChange={handleMusicVolumeChange}
+        onSfxVolumeChange={handleSfxVolumeChange}
+        onToggleMusicEnabled={toggleMusicEnabled}
+        onToggleSfxEnabled={toggleSfxEnabled}
+        onToggleProjection={toggleProjection}
+        onResetDefaults={handleResetSettings}
       />
     </main>
   );
