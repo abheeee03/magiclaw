@@ -1,4 +1,5 @@
 import React, { useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 
 export interface CartoonDialogProps {
   /** Controls visibility of the dialog */
@@ -165,64 +166,87 @@ export const CartoonDialog: React.FC<CartoonDialogProps> = ({
     };
   }, [isOpen, onClose]);
 
-  if (!isOpen) return null;
-
   return (
-    <div
-      className="cartoon-backdrop fixed inset-0 z-50 flex items-center justify-center bg-[#060d21]/75 p-4 backdrop-blur-[2px]"
-      role="dialog"
-      aria-modal="true"
-      aria-label={title}
-      onClick={() => {
-        if (closeOnBackdropClick) onClose();
-      }}
-    >
-      {/* Dialog Card */}
-      <div
-        className={`cartoon-dialog-font cartoon-dialog-shell relative w-full max-w-[440px] max-h-[88dvh] flex flex-col rounded-[28px] border-[3px] border-[#3E200C]/35 text-slate-900 ${className}`}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Top Curved Ribbon Header */}
-        <RibbonHeader title={title} />
-
-        {/* Glossy Red Cartoon Close Button */}
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close dialog"
-          className="cartoon-close-btn absolute -right-3 -top-3 z-30 flex h-12 w-12 cursor-pointer items-center justify-center rounded-full focus:outline-none focus-visible:ring-4 focus-visible:ring-yellow-300"
+    <AnimatePresence>
+      {isOpen && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.2 }}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-[#060d21]/70 p-4 backdrop-blur-[2px]"
+          role="dialog"
+          aria-modal="true"
+          aria-label={title}
+          onClick={() => {
+            if (closeOnBackdropClick) onClose();
+          }}
         >
-          <svg
-            viewBox="0 0 24 24"
-            className="relative z-10 h-6 w-6 text-white drop-shadow-[0_2px_0_rgba(120,8,15,0.85)]"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="4.2"
-            strokeLinecap="round"
-            aria-hidden="true"
+          {/* Dialog Card */}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.82, y: 26 }}
+            animate={{
+              opacity: 1,
+              scale: 1,
+              y: 0,
+              transition: {
+                type: "spring",
+                stiffness: 320,
+                damping: 24,
+              },
+            }}
+            exit={{
+              opacity: 0,
+              scale: 0.88,
+              y: 16,
+              transition: { duration: 0.16, ease: "easeIn" },
+            }}
+            className={`cartoon-dialog-font cartoon-dialog-shell relative w-full max-w-[440px] max-h-[88dvh] flex flex-col rounded-[28px] border-[3px] border-[#3E200C]/35 text-slate-900 ${className}`}
+            onClick={(e) => e.stopPropagation()}
           >
-            <path d="M6 6l12 12M18 6L6 18" />
-          </svg>
-        </button>
+            {/* Top Curved Ribbon Header */}
+            <RibbonHeader title={title} />
 
-        {/* Optional Subtitle */}
-        {subtitle && (
-          <p className="mt-1 px-6 text-center text-sm sm:text-base font-bold text-[#3E200C]/80 shrink-0">
-            {subtitle}
-          </p>
-        )}
+            {/* Glossy Red Cartoon Close Button */}
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close dialog"
+              className="cartoon-close-btn absolute -right-3 -top-3 z-30 flex h-12 w-12 cursor-pointer items-center justify-center rounded-full focus:outline-none focus-visible:ring-4 focus-visible:ring-yellow-300"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                className="relative z-10 h-6 w-6 text-white drop-shadow-[0_2px_0_rgba(120,8,15,0.85)]"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="4.2"
+                strokeLinecap="round"
+                aria-hidden="true"
+              >
+                <path d="M6 6l12 12M18 6L6 18" />
+              </svg>
+            </button>
 
-        {/* Main Content Slot */}
-        <DialogContent className={contentClassName}>{children}</DialogContent>
+            {/* Optional Subtitle */}
+            {subtitle && (
+              <p className="mt-1 px-6 text-center text-sm sm:text-base font-bold text-[#3E200C]/80 shrink-0">
+                {subtitle}
+              </p>
+            )}
 
-        {/* Optional Royal-Blue Bottom Tray */}
-        {footer && (
-          <div className="cartoon-dialog-footer rounded-b-[25px] px-5 py-4">
-            {footer}
-          </div>
-        )}
-      </div>
-    </div>
+            {/* Main Content Slot */}
+            <DialogContent className={contentClassName}>{children}</DialogContent>
+
+            {/* Optional Royal-Blue Bottom Tray */}
+            {footer && (
+              <div className="cartoon-dialog-footer rounded-b-[25px] px-5 py-4">
+                {footer}
+              </div>
+            )}
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 };
 

@@ -49,6 +49,8 @@ export interface ClawMachineViewProps {
   coinInsertCount?: number;
   isLoaderVisible?: boolean;
   showProjection?: boolean;
+  isPrizesZoomed?: boolean;
+  onPrizesZoomComplete?: () => void;
   onSceneReady?: () => void;
   onBootStateChange?: (hudHidden: boolean, booting: boolean) => void;
   onClawStateChange?: (clawState: string) => void;
@@ -220,6 +222,8 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
   coinInsertCount = 0,
   isLoaderVisible = false,
   showProjection = false,
+  isPrizesZoomed = false,
+  onPrizesZoomComplete,
   onSceneReady,
   onBootStateChange,
   onClawStateChange,
@@ -241,6 +245,8 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
     gameStateText,
     isLoaderVisible,
     showProjection,
+    isPrizesZoomed,
+    onPrizesZoomComplete,
     onSceneReady,
     onBootStateChange,
     onClawStateChange,
@@ -262,6 +268,8 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
       gameStateText,
       isLoaderVisible,
       showProjection,
+      isPrizesZoomed,
+      onPrizesZoomComplete,
       onSceneReady,
       onBootStateChange,
       onClawStateChange,
@@ -303,6 +311,7 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
   const syncBoxesRef = useRef<((slotList?: PrizeSlot[]) => void) | null>(null);
   const startBootRef = useRef<((isReplay?: boolean) => void) | null>(null);
   const setCameraModeRef = useRef<((mode: CamMode, instant?: boolean) => void) | null>(null);
+  const setPrizesZoomRef = useRef<((zoomed: boolean) => void) | null>(null);
   const triggerCoinAnimRef = useRef<(() => void) | null>(null);
   const lastVrfNonceAppliedRef = useRef<number>(0);
 
@@ -323,6 +332,13 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
       setCameraModeRef.current?.(activeCamMode, false);
     }
   }, [activeCamMode]);
+
+  // Prizes zoom-in / zoom-out prop updates
+  useEffect(() => {
+    if (!bootActiveRef.current) {
+      setPrizesZoomRef.current?.(isPrizesZoomed);
+    }
+  }, [isPrizesZoomed]);
 
   // Replay boot sequence when requested from header button
   useEffect(() => {
@@ -1078,14 +1094,22 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
     glassBack.position.set(0, 1.43, -1.0);
     cabinetGroup.add(glassBack);
 
-    // 7D. Top Canopy, Ceiling LED Grid Panel & "MAGICLAW" Marquee
+    // 7D. Top Canopy, Ceiling LED Grid Panel & "MAGICLAW" Marquee (hinged lid for rewards zoom)
+    const canopyLidGroup = new THREE.Group();
+    canopyLidGroup.position.set(0, 2.86, -1.07);
+    cabinetGroup.add(canopyLidGroup);
+
+    const canopyLidInner = new THREE.Group();
+    canopyLidInner.position.set(0, -2.86, 1.07);
+    canopyLidGroup.add(canopyLidInner);
+
     const canopyBox = new THREE.Mesh(
       new THREE.BoxGeometry(2.36, 0.72, 2.14),
       navyBodyMat
     );
     canopyBox.position.set(0, 3.22, 0);
     canopyBox.castShadow = true;
-    cabinetGroup.add(canopyBox);
+    canopyLidInner.add(canopyBox);
 
     const ceilingLEDMat = new THREE.MeshBasicMaterial({
       map: ceilingLEDTex,
@@ -1097,14 +1121,14 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
     );
     ceilingLEDMesh.rotation.x = Math.PI / 2;
     ceilingLEDMesh.position.set(0, 2.855, -0.02);
-    cabinetGroup.add(ceilingLEDMesh);
+    canopyLidInner.add(ceilingLEDMesh);
 
     const ceilingFrame = new THREE.Mesh(
       new THREE.BoxGeometry(1.76, 0.03, 1.0),
       postMetalMat
     );
     ceilingFrame.position.set(0, 2.868, -0.02);
-    cabinetGroup.add(ceilingFrame);
+    canopyLidInner.add(ceilingFrame);
 
     const topperGroup = new THREE.Group();
     topperGroup.position.set(0.32, 3.74, 0.42);
@@ -1130,11 +1154,11 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
     );
     topperStripe2.position.y = -0.06;
     topperGroup.add(topperStripe2);
-    cabinetGroup.add(topperGroup);
+    canopyLidInner.add(topperGroup);
 
     const marqueeGroup = new THREE.Group();
     marqueeGroup.position.set(0, 3.2, 1.07);
-    cabinetGroup.add(marqueeGroup);
+    canopyLidInner.add(marqueeGroup);
 
     const marqueeMat = new THREE.MeshStandardMaterial({
       map: marquee.texture,
@@ -1182,11 +1206,11 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
 
     const marqueeLightL = new THREE.PointLight(0xff2e93, 0.0, 4.0, 1.7);
     marqueeLightL.position.set(-0.95, 3.22, 1.48);
-    cabinetGroup.add(marqueeLightL);
+    canopyLidInner.add(marqueeLightL);
 
     const marqueeLightR = new THREE.PointLight(0xff7b29, 0.0, 4.0, 1.7);
     marqueeLightR.position.set(0.95, 3.22, 1.48);
-    cabinetGroup.add(marqueeLightR);
+    canopyLidInner.add(marqueeLightR);
 
     const marqueeHaloMat = new THREE.SpriteMaterial({
       map: pinkGlowTex,
@@ -1198,7 +1222,7 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
     const marqueeHalo = new THREE.Sprite(marqueeHaloMat);
     marqueeHalo.position.set(0, 3.2, 1.25);
     marqueeHalo.scale.set(3.4, 1.35, 1);
-    cabinetGroup.add(marqueeHalo);
+    canopyLidInner.add(marqueeHalo);
 
     // 7E. Protruding Control Panel Console
     const consoleGroup = new THREE.Group();
@@ -2272,6 +2296,49 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
     const camGoalTarget = new THREE.Vector3();
     let camTransitioning = false;
 
+    // Rewards top-down zoom-in / zoom-out state
+    type PrizesZoomPhase = "idle" | "zooming_in" | "zoomed" | "zooming_out";
+    let prizesZoomPhase: PrizesZoomPhase = "idle";
+    let prizesZoomElapsed = 0;
+    const PRIZES_ZOOM_IN_DUR = 0.62;
+    const PRIZES_ZOOM_OUT_DUR = 0.55;
+    const prizesZoomStartPos = new THREE.Vector3();
+    const prizesZoomStartTarget = new THREE.Vector3();
+    const prizesZoomArcPos = new THREE.Vector3(0.0, 3.85, 1.15);
+    const prizesZoomEndPos = new THREE.Vector3(0.0, 2.35, 0.42);
+    const prizesZoomEndTarget = new THREE.Vector3(0.0, 0.55, -0.05);
+    const prizesTmpVec = new THREE.Vector3();
+
+    const easeInOutCubic = (t: number) =>
+      t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+    const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
+
+    setPrizesZoomRef.current = (zoomed: boolean) => {
+      if (zoomed) {
+        if (prizesZoomPhase === "zooming_in" || prizesZoomPhase === "zoomed") return;
+        prizesZoomStartPos.copy(camera.position);
+        prizesZoomStartTarget.copy(controls.target);
+        prizesZoomElapsed = 0;
+        prizesZoomPhase = "zooming_in";
+        camTransitioning = false;
+        controls.enabled = false;
+      } else {
+        if (prizesZoomPhase === "idle" || prizesZoomPhase === "zooming_out") return;
+        prizesZoomStartPos.copy(camera.position);
+        prizesZoomStartTarget.copy(controls.target);
+        computeScaledCamPos(
+          CAM_PRESETS.hero.pos,
+          CAM_PRESETS.hero.target,
+          camGoalPos
+        );
+        camGoalTarget.copy(CAM_PRESETS.hero.target);
+        prizesZoomElapsed = 0;
+        prizesZoomPhase = "zooming_out";
+        camTransitioning = false;
+        controls.enabled = false;
+      }
+    };
+
     const setCameraMode = (mode: CamMode, instant = false) => {
       currentCamMode = mode;
       if (mode === "orbit") {
@@ -3169,17 +3236,90 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
       updateConfetti(dt);
 
       if (!bootSeq.active) {
-        if (camTransitioning && currentCamMode !== "orbit") {
-          const alpha = 1 - Math.exp(-6.5 * dt);
-          camera.position.lerp(camGoalPos, alpha);
-          controls.target.lerp(camGoalTarget, alpha);
-          if (camera.position.distanceTo(camGoalPos) < 0.015) {
+        if (prizesZoomPhase === "zooming_in") {
+          prizesZoomElapsed += dt;
+          const rawT = Math.min(1, prizesZoomElapsed / PRIZES_ZOOM_IN_DUR);
+          const eased = easeInOutCubic(rawT);
+
+          // Swing top canopy lid open early so camera dives inside unobstructed
+          const lidT = easeOutCubic(Math.min(1, rawT / 0.58));
+          canopyLidGroup.rotation.x = -1.18 * lidT;
+
+          // Quadratic Bezier arc over the front rim and down into the cabinet
+          const inv = 1 - eased;
+          camera.position.set(
+            inv * inv * prizesZoomStartPos.x +
+              2 * inv * eased * prizesZoomArcPos.x +
+              eased * eased * prizesZoomEndPos.x,
+            inv * inv * prizesZoomStartPos.y +
+              2 * inv * eased * prizesZoomArcPos.y +
+              eased * eased * prizesZoomEndPos.y,
+            inv * inv * prizesZoomStartPos.z +
+              2 * inv * eased * prizesZoomArcPos.z +
+              eased * eased * prizesZoomEndPos.z
+          );
+          prizesTmpVec
+            .copy(prizesZoomStartTarget)
+            .lerp(prizesZoomEndTarget, eased);
+          camera.lookAt(prizesTmpVec);
+
+          if (rawT >= 1) {
+            prizesZoomPhase = "zoomed";
+            controls.target.copy(prizesZoomEndTarget);
+            propsRef.current.onPrizesZoomComplete?.();
+          }
+        } else if (prizesZoomPhase === "zoomed") {
+          canopyLidGroup.rotation.x = -1.18;
+          camera.position.copy(prizesZoomEndPos);
+          camera.lookAt(prizesZoomEndTarget);
+        } else if (prizesZoomPhase === "zooming_out") {
+          prizesZoomElapsed += dt;
+          const rawT = Math.min(1, prizesZoomElapsed / PRIZES_ZOOM_OUT_DUR);
+          const eased = easeInOutCubic(rawT);
+
+          // Close top canopy lid smoothly as camera pulls back to hero
+          const lidCloseT = easeInOutCubic(Math.min(1, Math.max(0, (rawT - 0.15) / 0.85)));
+          canopyLidGroup.rotation.x = -1.18 * (1 - lidCloseT);
+
+          const inv = 1 - eased;
+          camera.position.set(
+            inv * inv * prizesZoomStartPos.x +
+              2 * inv * eased * prizesZoomArcPos.x +
+              eased * eased * camGoalPos.x,
+            inv * inv * prizesZoomStartPos.y +
+              2 * inv * eased * prizesZoomArcPos.y +
+              eased * eased * camGoalPos.y,
+            inv * inv * prizesZoomStartPos.z +
+              2 * inv * eased * prizesZoomArcPos.z +
+              eased * eased * camGoalPos.z
+          );
+          prizesTmpVec
+            .copy(prizesZoomStartTarget)
+            .lerp(camGoalTarget, eased);
+          camera.lookAt(prizesTmpVec);
+
+          if (rawT >= 1) {
+            prizesZoomPhase = "idle";
+            canopyLidGroup.rotation.x = 0;
+            currentCamMode = "hero";
             camera.position.copy(camGoalPos);
             controls.target.copy(camGoalTarget);
-            camTransitioning = false;
+            controls.enabled = true;
+            controls.update();
           }
+        } else {
+          if (camTransitioning && currentCamMode !== "orbit") {
+            const alpha = 1 - Math.exp(-6.5 * dt);
+            camera.position.lerp(camGoalPos, alpha);
+            controls.target.lerp(camGoalTarget, alpha);
+            if (camera.position.distanceTo(camGoalPos) < 0.015) {
+              camera.position.copy(camGoalPos);
+              controls.target.copy(camGoalTarget);
+              camTransitioning = false;
+            }
+          }
+          controls.update();
         }
-        controls.update();
       }
 
       renderer.render(scene, camera);

@@ -2,7 +2,7 @@
 
 import React from "react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
-import { Volume2, VolumeX, Shield, Camera, Crosshair } from "lucide-react";
+import { Shield, Camera, Crosshair } from "lucide-react";
 import { VirtualJoystick } from "./VirtualJoystick";
 import { TelemetryHUD } from "./TelemetryHUD";
 import { TicketBadge } from "../TicketBadge";
@@ -145,19 +145,19 @@ export const ArcadeHUD: React.FC<ArcadeHUDProps> = ({
             )}
           </div>
 
-          <GameButton
-            variant={isMuted ? "danger" : "success"}
-            size="sm"
+          <button
+            type="button"
             onClick={onToggleMute}
             title={isMuted ? "Unmute Audio" : "Mute Audio"}
             aria-label={isMuted ? "Unmute Audio" : "Mute Audio"}
+            className="cursor-pointer bg-transparent border-0 p-0 inline-flex items-center justify-center transition-transform hover:scale-105 active:scale-95 focus:outline-none"
           >
-            {isMuted ? (
-              <VolumeX className="w-4 h-4" />
-            ) : (
-              <Volume2 className="w-4 h-4" />
-            )}
-          </GameButton>
+            <img
+              src={isMuted ? "/ui/mute.png" : "/ui/speak.png"}
+              alt={isMuted ? "Muted" : "Sound On"}
+              className="w-9 h-9 sm:w-10 sm:h-10 object-contain drop-shadow-[0_3px_4px_rgba(0,0,0,0.35)]"
+            />
+          </button>
         </div>
       </header>
 

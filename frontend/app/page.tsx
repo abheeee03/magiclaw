@@ -119,6 +119,7 @@ export default function ClawVaultPage() {
 
   // Modals, Telemetry & Toast State
   const [isOddsModalOpen, setIsOddsModalOpen] = useState(false);
+  const [isPrizesZoomActive, setIsPrizesZoomActive] = useState(false);
   const [isTicketsModalOpen, setIsTicketsModalOpen] = useState(false);
   const [wonPrize, setWonPrize] = useState<WonPrizeInfo | null>(null);
   const [isWinModalOpen, setIsWinModalOpen] = useState(false);
@@ -1037,6 +1038,8 @@ export default function ClawVaultPage() {
           coinInsertCount={coinInsertCount}
           isLoaderVisible={!isLoaderDone}
           showProjection={showProjection}
+          isPrizesZoomed={isPrizesZoomActive}
+          onPrizesZoomComplete={() => setIsOddsModalOpen(true)}
           onSceneReady={handleSceneReady}
           onBootStateChange={(hudHidden) => setIsBootHudHidden(hudHidden)}
           onClawStateChange={handleClawStateChange}
@@ -1070,7 +1073,7 @@ export default function ClawVaultPage() {
         onOpenWinModal={() => setIsWinModalOpen(true)}
         onCamModeChange={setActiveCamMode}
         onToggleProjection={() => setShowProjection((v) => !v)}
-        onOpenOddsModal={() => setIsOddsModalOpen(true)}
+        onOpenOddsModal={() => setIsPrizesZoomActive(true)}
         onToggleMute={toggleMute}
         onJoystickMove={setVirtualJoyVector}
         onTriggerDrop={triggerDropBtn}
@@ -1112,7 +1115,11 @@ export default function ClawVaultPage() {
 
       <VaultOddsModal
         isOpen={isOddsModalOpen}
-        onClose={() => setIsOddsModalOpen(false)}
+        onClose={() => {
+          setIsOddsModalOpen(false);
+          setIsPrizesZoomActive(false);
+          setActiveCamMode("hero");
+        }}
         isDelegated={Boolean(machineConfig?.isDelegated)}
         slots={machineConfig?.slots}
       />

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { motion } from "framer-motion";
 import { ExternalLink, ShieldCheck, Target, Package, Sparkles } from "lucide-react";
 import { PRIZE_TIERS, PROGRAM_ID, MACHINE_ID } from "../../lib/constants";
 import { getMachinePda } from "../../lib/pda";
@@ -63,7 +64,7 @@ export const VaultOddsModal: React.FC<VaultOddsModalProps> = ({
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {inStockSlots.map((slot) => {
+              {inStockSlots.map((slot, idx) => {
                 const tierCfg = PRIZE_TIERS[slot.tier] || PRIZE_TIERS[0];
                 const buybackUsd = (
                   Number(slot.fallbackBuybackUsdc) / 1_000_000
@@ -78,8 +79,16 @@ export const VaultOddsModal: React.FC<VaultOddsModalProps> = ({
                 const showImage = Boolean(slot.image) && !failedImages[mintStr];
 
                 return (
-                  <a
+                  <motion.a
                     key={slot.slotId}
+                    initial={{ opacity: 0, y: 12, scale: 0.94 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    transition={{
+                      delay: Math.min(idx * 0.035, 0.35),
+                      type: "spring",
+                      stiffness: 320,
+                      damping: 22,
+                    }}
                     href={`https://explorer.solana.com/address/${mintStr}?cluster=devnet`}
                     target="_blank"
                     rel="noopener noreferrer"
@@ -147,7 +156,7 @@ export const VaultOddsModal: React.FC<VaultOddsModalProps> = ({
                         {isNft ? "x1" : `${qty}`}
                       </span>
                     </div>
-                  </a>
+                  </motion.a>
                 );
               })}
             </div>
