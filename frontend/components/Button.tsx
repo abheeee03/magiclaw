@@ -35,24 +35,21 @@ const VARIANTS: Record<GameButtonVariant, VariantConfig> = {
   // Primary: White face, Black text
   primary: {
     faceBg: "bg-gradient-to-b from-white via-[#fcfcfc] to-[#e7ebee]",
-    faceBorder: "border-[#1e232a]",
+    faceBorder: "border-black/15",
     depthBg: "bg-[#9ba3af]",
-    depthBorder: "border-[#1e232a]",
+    depthBorder: "border-black/15",
     textColor: "text-black",
-    textShadow: "0 2px 0 rgba(0, 0, 0, 0.15)",
     faceInnerShadow:
       "inset 0 2.5px 0 0 rgba(255, 255, 255, 0.9), inset 0 -2.5px 0 0 rgba(0, 0, 0, 0.08)",
     shineColor: "bg-white/70",
   },
-  // Accent: Yellow face, White text (with dark warm outline for contrast)
+  // Accent: Yellow face, dark brown text
   accent: {
     faceBg: "bg-gradient-to-b from-[#ffe838] via-[#ffd014] to-[#f5b300]",
-    faceBorder: "border-[#241a02]",
+    faceBorder: "border-black/15",
     depthBg: "bg-[#b87100]",
-    depthBorder: "border-[#241a02]",
-    textColor: "text-white",
-    textStroke: "3px #6b3e02",
-    textShadow: "0 3px 0 #4a2b02",
+    depthBorder: "border-black/15",
+    textColor: "text-[#3E200C]",
     faceInnerShadow:
       "inset 0 2.5px 0 0 rgba(255, 255, 255, 0.65), inset 0 -2.5px 0 0 rgba(0, 0, 0, 0.15)",
     shineColor: "bg-white/55",
@@ -60,12 +57,10 @@ const VARIANTS: Record<GameButtonVariant, VariantConfig> = {
   // Success: Exact replica of the reference image (Lime/Apple Green)
   success: {
     faceBg: "bg-gradient-to-b from-[#5fed32] via-[#48dd26] to-[#34c61a]",
-    faceBorder: "border-[#152709]",
+    faceBorder: "border-black/15",
     depthBg: "bg-[#1c780f]",
-    depthBorder: "border-[#152709]",
+    depthBorder: "border-black/15",
     textColor: "text-white",
-    textStroke: "3.5px #113908",
-    textShadow: "0 3px 0 #0d2b06",
     faceInnerShadow:
       "inset 0 2.5px 0 0 rgba(255, 255, 255, 0.55), inset 0 -2.5px 0 0 rgba(0, 0, 0, 0.18)",
     shineColor: "bg-white/50",
@@ -73,12 +68,10 @@ const VARIANTS: Record<GameButtonVariant, VariantConfig> = {
   // Danger: Crimson Red
   danger: {
     faceBg: "bg-gradient-to-b from-[#ff5c5c] via-[#f03a3a] to-[#d82222]",
-    faceBorder: "border-[#2b0808]",
+    faceBorder: "border-black/15",
     depthBg: "bg-[#911212]",
-    depthBorder: "border-[#2b0808]",
+    depthBorder: "border-black/15",
     textColor: "text-white",
-    textStroke: "3px #570a0a",
-    textShadow: "0 3px 0 #3b0606",
     faceInnerShadow:
       "inset 0 2.5px 0 0 rgba(255, 255, 255, 0.55), inset 0 -2.5px 0 0 rgba(0, 0, 0, 0.2)",
     shineColor: "bg-white/50",
@@ -86,12 +79,10 @@ const VARIANTS: Record<GameButtonVariant, VariantConfig> = {
   // Info: Bright Cyan / Sky Blue
   info: {
     faceBg: "bg-gradient-to-b from-[#38c8ff] via-[#1aafe8] to-[#0895cb]",
-    faceBorder: "border-[#071f2b]",
+    faceBorder: "border-black/15",
     depthBg: "bg-[#06658a]",
-    depthBorder: "border-[#071f2b]",
+    depthBorder: "border-black/15",
     textColor: "text-white",
-    textStroke: "3px #063f57",
-    textShadow: "0 3px 0 #042a3a",
     faceInnerShadow:
       "inset 0 2.5px 0 0 rgba(255, 255, 255, 0.6), inset 0 -2.5px 0 0 rgba(0, 0, 0, 0.15)",
     shineColor: "bg-white/50",
@@ -99,12 +90,10 @@ const VARIANTS: Record<GameButtonVariant, VariantConfig> = {
   // Neutral: Dark Slate
   neutral: {
     faceBg: "bg-gradient-to-b from-[#5b687a] via-[#475569] to-[#334155]",
-    faceBorder: "border-[#0f172a]",
+    faceBorder: "border-black/20",
     depthBg: "bg-[#1e293b]",
-    depthBorder: "border-[#0f172a]",
+    depthBorder: "border-black/20",
     textColor: "text-white",
-    textStroke: "3px #0f172a",
-    textShadow: "0 3px 0 #020617",
     faceInnerShadow:
       "inset 0 2.5px 0 0 rgba(255, 255, 255, 0.35), inset 0 -2.5px 0 0 rgba(0, 0, 0, 0.25)",
     shineColor: "bg-white/40",
@@ -129,7 +118,7 @@ const SIZES: Record<GameButtonSize, SizeConfig> = {
     translateActive: "group-active:translate-y-[4px]",
     facePadding: "px-4 py-1.5 min-h-[36px]",
     textSize: "text-sm",
-    borderWidth: "border-[2.5px]",
+    borderWidth: "border",
     borderRadius: "rounded-xl",
     shineSize: "w-4 h-1.5 top-1 left-1.5",
   },
@@ -139,7 +128,7 @@ const SIZES: Record<GameButtonSize, SizeConfig> = {
     translateActive: "group-active:translate-y-[6px]",
     facePadding: "px-7 py-2.5 min-h-[48px]",
     textSize: "text-lg",
-    borderWidth: "border-[3.5px]",
+    borderWidth: "border",
     borderRadius: "rounded-2xl",
     shineSize: "w-6 h-2.5 top-1.5 left-2",
   },
@@ -149,7 +138,7 @@ const SIZES: Record<GameButtonSize, SizeConfig> = {
     translateActive: "group-active:translate-y-[8px]",
     facePadding: "px-9 py-3.5 min-h-[58px]",
     textSize: "text-xl",
-    borderWidth: "border-[4px]",
+    borderWidth: "border",
     borderRadius: "rounded-2xl",
     shineSize: "w-8 h-3 top-2 left-2.5",
   },
@@ -159,7 +148,7 @@ const SIZES: Record<GameButtonSize, SizeConfig> = {
     translateActive: "group-active:translate-y-[10px]",
     facePadding: "px-11 py-4.5 min-h-[68px]",
     textSize: "text-2xl",
-    borderWidth: "border-[4.5px]",
+    borderWidth: "border",
     borderRadius: "rounded-3xl",
     shineSize: "w-10 h-3.5 top-2.5 left-3",
   },
@@ -169,7 +158,7 @@ const SIZES: Record<GameButtonSize, SizeConfig> = {
     translateActive: "group-active:translate-y-[6px]",
     facePadding: "p-2.5 min-w-[48px] min-h-[48px]",
     textSize: "text-lg",
-    borderWidth: "border-[3.5px]",
+    borderWidth: "border",
     borderRadius: "rounded-2xl",
     shineSize: "w-4 h-2 top-1.5 left-1.5",
   },
@@ -259,11 +248,6 @@ export const GameButton = forwardRef<HTMLButtonElement, GameButtonProps>(
               s.textSize,
               v.textColor,
             ].join(" ")}
-            style={{
-              WebkitTextStroke: v.textStroke,
-              paintOrder: "stroke fill",
-              textShadow: v.textShadow,
-            }}
           >
             {isLoading ? (
               <svg

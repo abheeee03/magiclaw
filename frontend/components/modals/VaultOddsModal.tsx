@@ -143,14 +143,7 @@ export const VaultOddsModal: React.FC<VaultOddsModalProps> = ({
                           {slot.icon || (isNft ? "👑" : "🪙")}
                         </span>
                       )}
-                      <span
-                        className="absolute -bottom-1 -right-1 text-[11px] font-black text-white leading-none"
-                        style={{
-                          paintOrder: "stroke fill",
-                          WebkitTextStroke: "3px #3E200C",
-                          textShadow: "0 2px 0 #3E200C",
-                        }}
-                      >
+                      <span className="absolute -bottom-1 -right-1 text-[10px] font-black text-white bg-[#3E200C] px-1.5 py-0.5 rounded-md leading-none">
                         {isNft ? "x1" : `${qty}`}
                       </span>
                     </div>

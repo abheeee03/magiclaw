@@ -97,7 +97,6 @@ export const TicketBadge: React.FC<TicketBadgeProps> = ({
           className="game-badge-font text-[24px] sm:text-[26px] tracking-wide transform -translate-y-[0.5px]"
           style={{
             color: "#52361F",
-            textShadow: "0 1px 0 rgba(255, 255, 255, 0.5)",
             fontWeight: 900,
           }}
         >

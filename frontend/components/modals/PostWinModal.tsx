@@ -2,17 +2,16 @@
 
 import React, { useState } from "react";
 import confetti from "canvas-confetti";
+import { motion } from "framer-motion";
 import {
   Check,
   Sparkles,
   ExternalLink,
   DollarSign,
   Wallet,
-  Coins,
-  Award,
 } from "lucide-react";
 import { WonPrizeInfo } from "../../lib/types";
-import { CartoonDialog } from "../Dialog";
+import SunburstBackground from "../SunBrustBackground";
 import { GameButton } from "../Button";
 
 interface PostWinModalProps {
@@ -32,13 +31,18 @@ export const PostWinModal: React.FC<PostWinModalProps> = ({
   onSellBack,
   onClaimToWallet,
 }) => {
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [settledAction, setSettledAction] = useState<"sold" | "claimed" | null>(null);
+  const [processingAction, setProcessingAction] = useState<
+    "sell" | "claim" | null
+  >(null);
+  const [settledAction, setSettledAction] = useState<
+    "sold" | "claimed" | null
+  >(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [imgFailed, setImgFailed] = useState(false);
 
   React.useEffect(() => {
     setSettledAction(null);
+    setProcessingAction(null);
     setErrorMsg(null);
     setImgFailed(false);
   }, [prize?.slotId, prize?.vrfRoll, isOpen]);
@@ -46,7 +50,7 @@ export const PostWinModal: React.FC<PostWinModalProps> = ({
   if (!prize) return null;
 
   const handleSellBack = async () => {
-    setIsProcessing(true);
+    setProcessingAction("sell");
     setErrorMsg(null);
     try {
       await onSellBack();
@@ -54,12 +58,12 @@ export const PostWinModal: React.FC<PostWinModalProps> = ({
     } catch (err: unknown) {
       setErrorMsg(err instanceof Error ? err.message : String(err));
     } finally {
-      setIsProcessing(false);
+      setProcessingAction(null);
     }
   };
 
   const handleClaim = async () => {
-    setIsProcessing(true);
+    setProcessingAction("claim");
     setErrorMsg(null);
     try {
       await onClaimToWallet();
@@ -72,7 +76,7 @@ export const PostWinModal: React.FC<PostWinModalProps> = ({
     } catch (err: unknown) {
       setErrorMsg(err instanceof Error ? err.message : String(err));
     } finally {
-      setIsProcessing(false);
+      setProcessingAction(null);
     }
   };
 
@@ -80,154 +84,203 @@ export const PostWinModal: React.FC<PostWinModalProps> = ({
     ? `1/1 NFT (${prize.symbol})`
     : `${prize.amount} ${prize.symbol}`;
 
+  const isBusy = processingAction !== null;
+
   return (
-    <CartoonDialog
-      isOpen={isOpen}
-      onClose={onClose}
-      title="YOU WON!"
-      subtitle={`Slot #${prize.slotId} • VRF Roll: ${prize.vrfRoll}/10,000 • ${(prize.effectiveOddsBps / 100).toFixed(0)}% Odds`}
-    >
-      <div className="flex items-center justify-center mb-3">
-        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#FFF6D6] border-2 border-[#C8963E] text-[11px] font-bold text-[#52361F]">
-          <Sparkles className="w-3.5 h-3.5 text-[#D97706]" />
-          <span>MAGICBLOCK VRF CONFIRMED GRIP</span>
-        </span>
-      </div>
-
-      {/* Exact Won Prize Card */}
-      <div className="rounded-2xl bg-[#FDF8EE] border-2 border-[#3E200C]/25 p-3.5 mb-4 flex items-center gap-3.5 shadow-[0_3px_0_rgba(62,32,12,0.18)]">
-        <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-[#FFEAA0] to-[#F7D674] border-2 border-[#C8963E] flex items-center justify-center text-4xl shrink-0 overflow-hidden shadow-inner">
-          {prize.image && !imgFailed ? (
-            <img
-              src={prize.image}
-              alt={prize.name}
-              onError={() => setImgFailed(true)}
-              className="w-full h-full object-cover"
-            />
-          ) : (
-            prize.icon
-          )}
-        </div>
-
-        <div className="flex-1 min-w-0">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-[#3DA4FF]/15 border border-[#1E7DF2]/40 text-[#0D3B8A]">
-              {prize.tierName}
+    <SunburstBackground isOpen={isOpen && Boolean(prize)} onClose={onClose}>
+      <div className="relative w-full max-w-lg px-4 py-6 flex flex-col items-center text-center select-none">
+        {/* Top Celebratory Header */}
+        <motion.div
+          initial={{ y: -24, opacity: 0, scale: 0.85 }}
+          animate={{ y: 0, opacity: 1, scale: 1 }}
+          transition={{
+            delay: 0.14,
+            type: "spring",
+            stiffness: 260,
+            damping: 18,
+          }}
+          className="flex flex-col items-center"
+        >
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#FFFDF0]/90 border-2 border-[#B86B00] text-[11px] font-extrabold text-[#6B3E02] shadow-[0_3px_0_rgba(140,75,0,0.35)] mb-2">
+            <Sparkles className="w-3.5 h-3.5 text-[#D97706]" />
+            <span>
+              {prize.tierName.toUpperCase()} • VRF VERIFIED
+              {prize.isBullseye ? " • 🎯 +3%" : ""}
             </span>
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#3E200C]/10 text-[#3E200C] border border-[#3E200C]/20 inline-flex items-center gap-1">
-              {prize.isNft ? (
-                <>
-                  <Award className="w-3 h-3" /> 1/1 NFT
-                </>
-              ) : (
-                <>
-                  <Coins className="w-3 h-3" /> SPL TOKEN
-                </>
-              )}
-            </span>
-            {prize.isBullseye && (
-              <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-800 border border-emerald-600/40">
-                🎯 +3%
-              </span>
-            )}
-          </div>
+          </span>
 
-          <h3 className="text-lg font-black text-[#3E200C] truncate mt-1">
-            {prize.name}
-          </h3>
+          <h2 className="text-4xl sm:text-5xl font-black tracking-wide text-[#3E1C00] leading-none">
+            YOU WON!
+          </h2>
+        </motion.div>
 
-          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
-            <span className="px-2 py-0.5 rounded-lg bg-[#1E7DF2]/15 border border-[#1E7DF2]/35 text-[#0D3B8A] font-bold">
-              Reward: {rewardLabel}
-            </span>
-            <span className="text-[#6E4B2A] font-bold">
-              Buyback:{" "}
-              <strong className="text-[#B45309] font-black">
-                {prize.sellBackUsdc.toFixed(2)} Tickets
-              </strong>
-            </span>
-          </div>
-
-          <div className="mt-1 text-[10px] text-[#6E4B2A]/80 truncate">
-            Mint: {prize.mint.slice(0, 8)}...{prize.mint.slice(-8)}
-          </div>
-        </div>
-      </div>
-
-      {settledAction ? (
-        <div className="text-center py-3">
-          <div className="w-12 h-12 rounded-full bg-emerald-500/20 border-2 border-emerald-600 text-emerald-700 flex items-center justify-center mx-auto mb-3">
-            <Check className="w-6 h-6" />
-          </div>
-          <h4 className="text-lg font-black text-[#3E200C] mb-1">
-            {settledAction === "sold"
-              ? "SELL-BACK SETTLED!"
-              : `${rewardLabel} SENT TO WALLET!`}
-          </h4>
-          <p className="text-xs text-[#52361F] mb-4">
-            {settledAction === "sold"
-              ? `Credited +${prize.sellBackUsdc.toFixed(2)} Tickets directly to your session balance.`
-              : `Transferred ${rewardLabel} (${prize.name}) from Vault PDA straight to your Solana Devnet wallet.`}
-          </p>
-          <GameButton variant="info" size="md" fullWidth onClick={onClose}>
-            CONTINUE PLAYING
-          </GameButton>
-        </div>
-      ) : (
-        <div className="flex flex-col gap-3">
-          {!pendingClaimOnly && (
-            <GameButton
-              variant="success"
-              size="md"
-              fullWidth
-              isLoading={isProcessing}
-              disabled={isProcessing}
-              leftIcon={<DollarSign className="w-4 h-4" />}
-              onClick={handleSellBack}
-            >
-              {isProcessing
-                ? "PROCESSING..."
-                : `INSTANT SELL-BACK (+${prize.sellBackUsdc.toFixed(2)} 🎟️)`}
-            </GameButton>
-          )}
-
-          <GameButton
-            variant="accent"
-            size="md"
-            fullWidth
-            isLoading={isProcessing}
-            disabled={isProcessing}
-            leftIcon={<Wallet className="w-4 h-4" />}
-            onClick={handleClaim}
+        {/* Main Metadata Image */}
+        <motion.div
+          initial={{ scale: 0.4, opacity: 0, rotate: -8 }}
+          animate={{ scale: 1, opacity: 1, rotate: 0 }}
+          transition={{
+            delay: 0.22,
+            type: "spring",
+            stiffness: 220,
+            damping: 14,
+          }}
+          className="my-5 sm:my-6 relative"
+        >
+          <motion.div
+            animate={{ y: [0, -8, 0] }}
+            transition={{
+              repeat: Infinity,
+              duration: 2.8,
+              ease: "easeInOut",
+            }}
+            className="w-36 h-36 sm:w-44 sm:h-44 rounded-3xl bg-[#FFFDF0] border-4 border-[#5C2B00] p-2 flex items-center justify-center overflow-hidden shadow-[0_10px_0_#5C2B00,0_20px_35px_rgba(92,43,0,0.45)]"
           >
-            {isProcessing
-              ? "SETTLING TO WALLET..."
-              : pendingClaimOnly
-              ? `CLAIM ${rewardLabel} TO WALLET`
-              : `CLAIM ${rewardLabel}`}
-          </GameButton>
+            {prize.image && !imgFailed ? (
+              <img
+                src={prize.image}
+                alt={prize.name}
+                onError={() => setImgFailed(true)}
+                className="w-full h-full object-cover rounded-2xl"
+              />
+            ) : (
+              <span className="text-7xl">{prize.icon}</span>
+            )}
+          </motion.div>
+        </motion.div>
 
-          {errorMsg && (
-            <div className="p-3 rounded-xl bg-rose-100 border-2 border-rose-400 text-rose-800 text-[11px] break-all">
-              {errorMsg}
+        {/* Amount of Tokens & Ticker + Prize Name */}
+        <motion.div
+          initial={{ y: 18, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ delay: 0.3, duration: 0.35 }}
+          className="flex flex-col items-center mb-5"
+        >
+          <div className="text-3xl sm:text-4xl font-black text-[#3E1C00] leading-tight">
+            {prize.isNft ? `1/1 ${prize.symbol}` : `${prize.amount} ${prize.symbol}`}
+          </div>
+
+          <p className="mt-1.5 text-sm sm:text-base font-extrabold text-[#4A2500]">
+            {prize.name}
+          </p>
+        </motion.div>
+
+        {/* Settled State or Side-by-Side Action Buttons */}
+        {settledAction ? (
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="w-full max-w-md rounded-3xl bg-[#FFFDF0]/95 border-[3px] border-[#5C2B00] p-5 shadow-[0_6px_0_#5C2B00]"
+          >
+            <div className="w-12 h-12 rounded-full bg-emerald-500/20 border-2 border-emerald-600 text-emerald-700 flex items-center justify-center mx-auto mb-2.5">
+              <Check className="w-6 h-6" />
             </div>
-          )}
-        </div>
-      )}
+            <h4 className="text-lg font-black text-[#3E200C] mb-1">
+              {settledAction === "sold"
+                ? "SELL-BACK SETTLED!"
+                : `${rewardLabel} SENT TO WALLET!`}
+            </h4>
+            <p className="text-xs font-bold text-[#52361F] mb-4">
+              {settledAction === "sold"
+                ? `Credited +${prize.sellBackUsdc.toFixed(2)} Tickets directly to your session balance.`
+                : `Transferred ${rewardLabel} (${prize.name}) straight to your Solana Devnet wallet.`}
+            </p>
+            <GameButton variant="info" size="md" fullWidth onClick={onClose}>
+              CONTINUE PLAYING
+            </GameButton>
+          </motion.div>
+        ) : (
+          <motion.div
+            initial={{ y: 24, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ delay: 0.36, duration: 0.35 }}
+            className="w-full max-w-md flex flex-col gap-3"
+          >
+            <div
+              className={
+                pendingClaimOnly
+                  ? "flex justify-center"
+                  : "grid grid-cols-2 gap-3 w-full"
+              }
+            >
+              {!pendingClaimOnly && (
+                <GameButton
+                  variant="primary"
+                  size="md"
+                  fullWidth
+                  isLoading={processingAction === "sell"}
+                  disabled={isBusy}
+                  leftIcon={
+                    processingAction === "sell" ? undefined : (
+                      <DollarSign className="w-4 h-4 text-[#167A2E]" />
+                    )
+                  }
+                  onClick={handleSellBack}
+                >
+                  {processingAction === "sell" ? (
+                    <span>SELLING...</span>
+                  ) : (
+                    <span className="flex flex-col items-center leading-tight">
+                      <span className="text-xs sm:text-sm font-black">
+                        SELL BACK
+                      </span>
+                      <span className="text-[10px] font-extrabold text-[#167A2E]">
+                        +{prize.sellBackUsdc.toFixed(2)} 🎟️
+                      </span>
+                    </span>
+                  )}
+                </GameButton>
+              )}
 
-      {/* Explorer Verify Link */}
-      <div className="mt-4 pt-3 border-t border-[#3E200C]/15 flex items-center justify-between text-[11px] text-[#52361F]">
-        <span>Solana Devnet Custody</span>
-        <a
+              <GameButton
+                variant="success"
+                size="md"
+                fullWidth={!pendingClaimOnly}
+                isLoading={processingAction === "claim"}
+                disabled={isBusy}
+                leftIcon={
+                  processingAction === "claim" ? undefined : (
+                    <Wallet className="w-4 h-4" />
+                  )
+                }
+                onClick={handleClaim}
+              >
+                {processingAction === "claim" ? (
+                  <span>CLAIMING...</span>
+                ) : (
+                  <span className="flex flex-col items-center leading-tight">
+                    <span className="text-xs sm:text-sm font-black">
+                      CLAIM
+                    </span>
+                    <span className="text-[10px] font-extrabold opacity-95">
+                      TO WALLET
+                    </span>
+                  </span>
+                )}
+              </GameButton>
+            </div>
+
+            {errorMsg && (
+              <div className="p-3 rounded-2xl bg-rose-100 border-2 border-rose-500 text-rose-900 text-xs font-bold break-all">
+                {errorMsg}
+              </div>
+            )}
+          </motion.div>
+        )}
+
+        {/* Explorer Verify Link */}
+        <motion.a
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.45 }}
           href={`https://explorer.solana.com/address/${prize.mint}?cluster=devnet`}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center gap-1 text-[#0D3B8A] hover:underline font-bold"
+          className="mt-4 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#FFFDF0]/75 hover:bg-[#FFFDF0] border border-[#B86B00]/50 text-[11px] font-extrabold text-[#5C2B00] transition-colors"
         >
-          <span>Inspect Won Mint</span>
+          <span>Inspect Mint on Solana Explorer</span>
           <ExternalLink className="w-3 h-3" />
-        </a>
+        </motion.a>
       </div>
-    </CartoonDialog>
+    </SunburstBackground>
   );
 };
