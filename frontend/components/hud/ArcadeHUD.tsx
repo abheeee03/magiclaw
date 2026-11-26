@@ -6,6 +6,7 @@ import { Shield, Camera } from "lucide-react";
 import { VirtualJoystick } from "./VirtualJoystick";
 import { TicketBadge } from "../TicketBadge";
 import { GameButton } from "../Button";
+import { ArcadeToast, ArcadeToastData } from "../ArcadeToast";
 import { formatTickets } from "../modals/TicketsModal";
 import type { CamMode } from "../three/ClawMachineView";
 
@@ -13,38 +14,30 @@ const CAM_ORDER: CamMode[] = ["hero", "front", "side", "orbit"];
 
 export interface ArcadeHUDProps {
   mounted: boolean;
-  connected: boolean;
   isBootHudHidden: boolean;
   canPlayTurn: boolean;
-  isOnchainActive: boolean;
-  hasPendingPrize?: boolean;
-  sessionKeyMismatch?: boolean;
   ticketBalance: number;
   activeCamMode: CamMode;
   inStockCount: number;
-  toastMessage: { title: string; sub: string; icon: string } | null;
+  toastMessage: ArcadeToastData | null;
   gameStateText: string;
   erLatencyMs: number;
   isMachineDelegated: boolean;
   vrfStatus: "Ready" | "Rolling" | "Fulfilled" | "Missed";
   lastSignature?: string;
   onOpenTicketsModal: () => void;
-  onOpenWinModal?: () => void;
   onCamModeChange: (mode: CamMode) => void;
   onOpenOddsModal: () => void;
   onOpenSettingsModal: () => void;
+  onCloseToast: () => void;
   onJoystickMove: (vector: { x: number; y: number }) => void;
   onTriggerDrop: () => void;
 }
 
 export const ArcadeHUD: React.FC<ArcadeHUDProps> = ({
   mounted,
-  connected,
   isBootHudHidden,
   canPlayTurn,
-  isOnchainActive,
-  hasPendingPrize = false,
-  sessionKeyMismatch = false,
   ticketBalance,
   activeCamMode,
   inStockCount,
@@ -55,10 +48,10 @@ export const ArcadeHUD: React.FC<ArcadeHUDProps> = ({
   vrfStatus,
   lastSignature,
   onOpenTicketsModal,
-  onOpenWinModal,
   onCamModeChange,
   onOpenOddsModal,
   onOpenSettingsModal,
+  onCloseToast,
   onJoystickMove,
   onTriggerDrop,
 }) => {
@@ -109,9 +102,7 @@ export const ArcadeHUD: React.FC<ArcadeHUDProps> = ({
             onClick={onOpenOddsModal}
             leftIcon={<Shield className="w-3.5 h-3.5" />}
           >
-            <span className="hidden sm:inline">
-              PRIZES ({inStockCount}) &amp; ODDS
-            </span>
+            <span className="hidden sm:inline">REWARDS</span>
             <span className="sm:hidden">PRIZES ({inStockCount})</span>
           </GameButton>
 
@@ -141,67 +132,8 @@ export const ArcadeHUD: React.FC<ArcadeHUDProps> = ({
         </div>
       </header>
 
-      {/* Dynamic Toast Alert */}
-      {toastMessage && (
-        <div className="fixed top-16 sm:top-20 left-1/2 -translate-x-1/2 z-40 pointer-events-none animate-bounce w-[calc(100%-2rem)] sm:w-auto flex justify-center">
-          <div className="rounded-2xl bg-[#FDF8EE] border-[3px] border-[#3E200C] shadow-[0_5px_0_#3E200C] px-3.5 py-2 sm:px-4 sm:py-2.5 flex items-center gap-2.5 sm:gap-3 max-w-md">
-            <span className="text-lg sm:text-xl shrink-0">
-              {toastMessage.icon}
-            </span>
-            <div className="flex flex-col leading-tight">
-              <span className="text-xs sm:text-sm font-black text-[#3E200C]">
-                {toastMessage.title}
-              </span>
-              <span className="text-[11px] font-bold text-[#6E4B2A]">
-                {toastMessage.sub}
-              </span>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Onboarding / Pending Prize Gate Banner */}
-      {!isBootHudHidden && hasPendingPrize && (
-        <div className="relative z-20 mx-auto px-3 max-w-[92vw] pointer-events-auto">
-          <GameButton variant="success" size="sm" onClick={onOpenWinModal}>
-            🏆 Unclaimed prize waiting! Click to Claim or Sell-Back
-          </GameButton>
-        </div>
-      )}
-
-      {!isBootHudHidden &&
-        !hasPendingPrize &&
-        !canPlayTurn &&
-        ![
-          "DROPPING",
-          "GRABBING",
-          "LIFTING",
-          "RETURNING",
-          "RELEASING",
-          "RESOLVING",
-          "WINNER!",
-        ].includes(gameStateText) && (
-          <div className="relative z-20 mx-auto px-3 max-w-[92vw] pointer-events-auto">
-            {connected ? (
-              <GameButton
-                variant="accent"
-                size="sm"
-                onClick={onOpenTicketsModal}
-              >
-                {!isOnchainActive
-                  ? "🎟️ Click Tickets (top left) to airdrop Test USDC & buy tickets!"
-                  : sessionKeyMismatch
-                    ? "🔑 Session key mismatch — click to re-sync session"
-                    : "🎟️ Out of tickets! Click to buy more"}
-              </GameButton>
-            ) : (
-              <div className="rounded-2xl bg-[#FDF8EE] border-[3px] border-[#3E200C] shadow-[0_4px_0_#3E200C] px-3.5 py-2 text-[11px] sm:text-xs font-extrabold text-[#3E200C] text-center">
-                🔒 Connect your Solana Devnet wallet (top right) to play and win
-                real tokens &amp; NFTs.
-              </div>
-            )}
-          </div>
-        )}
+      {/* Right-aligned Slide Toast below Settings & HUD Header */}
+      <ArcadeToast toast={toastMessage} onClose={onCloseToast} />
 
       {/* Bottom Floating Thumb Control Deck */}
       <footer

@@ -10,6 +10,7 @@ import { VaultOddsModal } from "../components/modals/VaultOddsModal";
 import { TicketsModal } from "../components/modals/TicketsModal";
 import { SettingsModal } from "../components/modals/SettingsModal";
 import { LoadingScreen } from "../components/LoadingScreen";
+import { ArcadeToastData, ArcadeToastVariant } from "../components/ArcadeToast";
 import { arcadeAudio } from "../components/audio/ArcadeAudio";
 import type {
   CamMode,
@@ -129,7 +130,9 @@ export default function ClawVaultPage() {
   const [wonPrize, setWonPrize] = useState<WonPrizeInfo | null>(null);
   const [isWinModalOpen, setIsWinModalOpen] = useState(false);
   const [isPendingClaimOnly, setIsPendingClaimOnly] = useState(false);
-  const [toastMessage, setToastMessage] = useState<{ title: string; sub: string; icon: string } | null>(null);
+  const [toastMessage, setToastMessage] = useState<ArcadeToastData | null>(null);
+  const toastIdRef = useRef<number>(0);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [faucetLoading, setFaucetLoading] = useState(false);
   const [onboardingLoading, setOnboardingLoading] = useState(false);
   const [lastSignature, setLastSignature] = useState<string | undefined>(undefined);
@@ -176,12 +179,50 @@ export default function ClawVaultPage() {
       (usdcBalance >= playFeeUsd || playerSession?.state === "Steering")
   );
 
-  const showToast = useCallback((icon: string, title: string, sub: string, duration = 3500) => {
-    setToastMessage({ icon, title, sub });
-    setTimeout(() => {
-      setToastMessage(null);
-    }, duration);
+  const closeToast = useCallback(() => {
+    if (toastTimerRef.current) {
+      clearTimeout(toastTimerRef.current);
+      toastTimerRef.current = null;
+    }
+    setToastMessage(null);
   }, []);
+
+  const showToast = useCallback(
+    (
+      icon: string,
+      title: string,
+      sub: string,
+      duration = 3800,
+      variant?: ArcadeToastVariant
+    ) => {
+      if (toastTimerRef.current) {
+        clearTimeout(toastTimerRef.current);
+      }
+      const inferredVariant: ArcadeToastVariant =
+        variant ??
+        (icon === "❌"
+          ? "error"
+          : icon === "⚠️" || icon === "😬" || icon === "⏳" || icon === "🔑"
+          ? "warning"
+          : icon === "✅" || icon === "🎉" || icon === "🏆" || icon === "✨"
+          ? "success"
+          : "info");
+      toastIdRef.current += 1;
+      setToastMessage({
+        id: toastIdRef.current,
+        icon,
+        title,
+        sub,
+        variant: inferredVariant,
+        duration,
+      });
+      toastTimerRef.current = setTimeout(() => {
+        setToastMessage(null);
+        toastTimerRef.current = null;
+      }, duration);
+    },
+    []
+  );
 
   const runWithWalletAuth = useCallback(
     async <T,>(fn: () => Promise<T>): Promise<T> => {
@@ -586,7 +627,7 @@ export default function ClawVaultPage() {
         if (!signTransaction) {
           throw new Error("Wallet does not support signTransaction for MagicBlock ER.");
         }
-        showToast("🔄", "SYNCING ER SESSION", "Undelegating session to L1 before adding tickets...");
+        showToast("🔄", "SYNCING SESSION", "Approve session sync in your wallet before adding tickets...");
         const undelTx = new Transaction().add(
           createRequestWithdrawAndUndelegateIx(
             publicKey,
@@ -662,13 +703,13 @@ export default function ClawVaultPage() {
       tx.recentBlockhash = blockhash;
       tx.feePayer = publicKey;
 
-      showToast("🎟️", `BUYING ${ticketCount} TICKETS`, "Approve in wallet to load tickets into ER...");
+      showToast("🎟️", `BUYING ${ticketCount} TICKETS`, "Approve in your wallet to load tickets...");
       const sig = await runWithWalletAuth(() => sendTransaction(tx, baseConnection));
       await confirmTx(baseConnection, sig);
       setLastSignature(sig);
 
       await refreshMachineAndSession();
-      showToast("✅", `${ticketCount} TICKETS LOADED!`, "Ready for 10ms gasless play on MagicBlock ER!");
+      showToast("✅", `${ticketCount} TICKETS LOADED!`, "You're ready to play — move the claw and drop!", 3800, "success");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       showToast("❌", "BUY TICKETS FAILED", msg.slice(0, 100), 5000);
@@ -697,7 +738,7 @@ export default function ClawVaultPage() {
         throw new Error("Wallet does not support signTransaction for MagicBlock ER.");
       }
 
-      showToast("💸", "WITHDRAWING TICKETS", "Approve undelegation from ER to L1...");
+      showToast("💸", "WITHDRAWING TICKETS", "Approve withdrawal in your wallet...");
       const signed = await runWithWalletAuth(() => signTransaction(tx));
       await erConnection.sendRawTransaction(signed.serialize(), {
         skipPreflight: false,
@@ -706,7 +747,7 @@ export default function ClawVaultPage() {
 
       const undelegated = await waitForSessionUndelegated(publicKey, machinePda);
       if (!undelegated) {
-        throw new Error("Timed out waiting for undelegation to land on Solana L1.");
+        throw new Error("Timed out waiting for withdrawal settlement.");
       }
 
       const ownerUsdcAta = getAssociatedTokenAddressSync(
@@ -725,13 +766,13 @@ export default function ClawVaultPage() {
       const { blockhash: l1Bh } = await baseConnection.getLatestBlockhash("confirmed");
       l1Tx.recentBlockhash = l1Bh;
       l1Tx.feePayer = publicKey;
-      showToast("🪙", "SETTLING TO WALLET", "Approve L1 transfer to receive your Test USDC...");
+      showToast("🪙", "SETTLING TO WALLET", "Approve transfer to receive your Test USDC...");
       const l1Sig = await runWithWalletAuth(() => sendTransaction(l1Tx, baseConnection));
       await confirmTx(baseConnection, l1Sig);
       setLastSignature(l1Sig);
 
       await refreshMachineAndSession();
-      showToast("✅", "TICKETS WITHDRAWN TO WALLET!", "Session Test USDC returned to your Devnet wallet.");
+      showToast("✅", "TICKETS WITHDRAWN!", "Your Test USDC is back in your wallet.", 3800, "success");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       showToast("❌", "WITHDRAW FAILED", msg.slice(0, 90), 5000);
@@ -924,19 +965,29 @@ export default function ClawVaultPage() {
             setGameStateText("WINNER!");
             showToast(
               "🏆",
-              resolved.isBullseye ? "BULLSEYE GRAB!" : "VRF LOCKED A GRAB!",
-              `Lifting ${targetSlotInfo?.name || `Slot #${resolved.targetSlot}`} (Roll ${resolved.lastVrfRoll})!`
+              resolved.isBullseye ? "BULLSEYE GRAB!" : "NICE GRAB!",
+              `Lifting ${targetSlotInfo?.name || "your prize"}!`,
+              3600,
+              "success"
             );
           } else if (outcome === "Slipped") {
             setGameStateText("SLIPPED!");
             showToast(
               "😬",
-              "GRIP SLIPPED ON VRF",
-              `Near miss on ${targetSlotInfo?.name || `Slot #${resolved.targetSlot}`} (Roll ${resolved.lastVrfRoll}). Try again!`
+              "GRIP SLIPPED!",
+              `So close on ${targetSlotInfo?.name || "that pack"} — try again!`,
+              3200,
+              "warning"
             );
           } else {
-            setGameStateText("MISSED");
-            showToast("💨", "CLAW MISSED", "No prize aligned within capture radius.");
+            setGameStateText("MISSED!");
+            showToast(
+              "💨",
+              "CLAW MISSED!",
+              "Line up directly over a prize pack and try again.",
+              3200,
+              "warning"
+            );
           }
 
           void refreshMachineAndSession(false);
@@ -951,13 +1002,19 @@ export default function ClawVaultPage() {
             targetSlot: 0,
             isBullseye: false,
           });
-          showToast("⏳", "VRF DELAYED", "Re-syncing session from MagicBlock ER...");
+          showToast(
+            "💨",
+            "CLAW MISSED!",
+            "No pack caught this round — give it another try!",
+            3200,
+            "warning"
+          );
           void refreshMachineAndSession(false);
         }
       } catch (err: unknown) {
-        console.error("ER drop failed:", err);
+        console.error("Drop failed:", err);
         const msg = err instanceof Error ? err.message : String(err);
-        showToast("❌", "ER DROP FAILED", msg.slice(0, 100), 5000);
+        showToast("❌", "DROP FAILED", msg.slice(0, 100), 4500, "error");
         setVrfStatus("Ready");
         setGameStateText("READY");
         vrfNonceCounterRef.current += 1;
@@ -1065,15 +1122,15 @@ export default function ClawVaultPage() {
       setIsPendingClaimOnly(true);
     }
 
-    // 2. Wait until MagicBlock ER commits claim_nonce to Solana L1
-    showToast("⏳", "COMMITTING TO SOLANA L1", "Syncing ER claim state to Devnet L1...");
+    // 2. Wait until claim settles to Solana L1
+    showToast("⏳", "PREPARING CLAIM", "Finalizing your prize for wallet transfer...", 4000, "info");
     const committed = await waitForL1ClaimCommit(
       publicKey,
       machinePda,
       expectedClaimNonce
     );
     if (!committed) {
-      throw new Error("Timed out waiting for ER claim commit on Solana L1. Click retry to finish.");
+      throw new Error("Timed out finalizing claim. Click retry to finish.");
     }
 
     // 3. Create ATA (idempotent) + execute L1 prize transfer in 1 wallet-approved L1 tx
@@ -1095,7 +1152,7 @@ export default function ClawVaultPage() {
       const { blockhash: l1Bh } = await baseConnection.getLatestBlockhash("confirmed");
       l1ClaimTx.recentBlockhash = l1Bh;
       l1ClaimTx.feePayer = publicKey;
-      showToast("📦", "CLAIMING TO WALLET", "Approve L1 transfer in your wallet...");
+      showToast("📦", "CLAIMING TO WALLET", "Approve transfer in your wallet...", 4000, "info");
       const l1Sig = await runWithWalletAuth(() => sendTransaction(l1ClaimTx, baseConnection));
       await confirmTx(baseConnection, l1Sig);
       setLastSignature(l1Sig);
@@ -1103,7 +1160,7 @@ export default function ClawVaultPage() {
 
     setIsPendingClaimOnly(false);
     await refreshMachineAndSession();
-    showToast("🎉", "PRIZE SENT TO YOUR WALLET!", `${wonPrize.name} landed in your Devnet wallet!`);
+    showToast("🎉", "PRIZE SENT TO YOUR WALLET!", `${wonPrize.name} landed in your wallet!`, 4200, "success");
   };
 
   const triggerDropBtn = () => {
@@ -1111,30 +1168,30 @@ export default function ClawVaultPage() {
       return;
     }
     if (!connected || !publicKey) {
-      showToast("👛", "CONNECT WALLET FIRST", "Connect your Solana Devnet wallet to play!");
+      showToast("👛", "CONNECT WALLET FIRST", "Connect your Solana Devnet wallet to play!", 3800, "warning");
       return;
     }
     if (!isOnchainActive) {
-      showToast("🎟️", "TICKETS REQUIRED", "Click Tickets in the top left to get free tickets!");
+      showToast("🎟️", "TICKETS REQUIRED", "Load tickets from the Tickets button (top left) to play!", 3800, "warning");
       setIsTicketsModalOpen(true);
       return;
     }
     if (!sessionKeyMatches) {
-      showToast("🔑", "SESSION KEY MISMATCH", "Open Tickets to re-sync your session key!");
+      showToast("🔑", "SESSION SYNC NEEDED", "Re-open Tickets to refresh your play session.", 3800, "warning");
       setIsTicketsModalOpen(true);
       return;
     }
     if (hasPendingPrize) {
-      showToast("🏆", "CLAIM OR SELL PRIZE FIRST", "Resolve your pending prize to keep playing.");
+      showToast("🏆", "PRIZE WAITING!", "Claim or sell back your won prize to keep playing.", 3800, "warning");
       setIsWinModalOpen(true);
       return;
     }
     if (playerSession?.state === "AwaitingVrf") {
-      showToast("⚡", "VRF STILL SETTLING", "Waiting for MagicBlock VRF outcome...");
+      showToast("⏳", "RESOLVING DROP", "Finishing your previous drop...", 2500, "info");
       return;
     }
     if (usdcBalance < playFeeUsd && playerSession?.state !== "Steering") {
-      showToast("🎟️", "OUT OF TICKETS", "Click Tickets in the top left to buy more!");
+      showToast("🎟️", "OUT OF TICKETS", "Buy more tickets from the top-left Tickets button!", 3800, "warning");
       setIsTicketsModalOpen(true);
       return;
     }
@@ -1203,12 +1260,8 @@ export default function ClawVaultPage() {
 
       <ArcadeHUD
         mounted={mounted}
-        connected={connected}
         isBootHudHidden={isBootHudHidden}
         canPlayTurn={canPlayTurn}
-        isOnchainActive={isOnchainActive}
-        hasPendingPrize={hasPendingPrize}
-        sessionKeyMismatch={Boolean(isOnchainActive && !sessionKeyMatches)}
         ticketBalance={ticketBalance}
         activeCamMode={activeCamMode}
         inStockCount={
@@ -1223,10 +1276,10 @@ export default function ClawVaultPage() {
         vrfStatus={vrfStatus}
         lastSignature={lastSignature}
         onOpenTicketsModal={() => setIsTicketsModalOpen(true)}
-        onOpenWinModal={() => setIsWinModalOpen(true)}
         onCamModeChange={setActiveCamMode}
         onOpenOddsModal={() => setIsPrizesZoomActive(true)}
         onOpenSettingsModal={() => setIsSettingsModalOpen(true)}
+        onCloseToast={closeToast}
         onJoystickMove={setVirtualJoyVector}
         onTriggerDrop={triggerDropBtn}
       />
@@ -1253,6 +1306,15 @@ export default function ClawVaultPage() {
         pendingClaimOnly={isPendingClaimOnly}
         onClose={() => {
           setIsWinModalOpen(false);
+          if (hasPendingPrize) {
+            showToast(
+              "🏆",
+              "PRIZE WAITING!",
+              "Press DROP anytime to claim or sell back your prize.",
+              3800,
+              "warning"
+            );
+          }
           setGameStateText(
             hasPendingPrize
               ? "CLAIM PRIZE!"

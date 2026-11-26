@@ -314,3 +314,48 @@ body {
 .cartoon-backdrop {
   animation: cartoonFadeIn 0.18s ease-out forwards;
 }
+
+/* Glowing rays & sweeping shimmer lines for Rare and Grail reward cards */
+@keyframes rewardRaySpin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes rewardGlowSweep {
+  0% {
+    transform: translateX(-60%);
+  }
+  55%,
+  100% {
+    transform: translateX(340%);
+  }
+}
+
+@keyframes rewardGrailShimmer {
+  0% {
+    transform: translateX(-20%);
+  }
+  50%,
+  100% {
+    transform: translateX(280%);
+  }
+}
+
+.reward-glow-rays {
+  animation: rewardRaySpin 14s linear infinite;
+  will-change: transform;
+}
+
+.reward-glow-sweep {
+  animation: rewardGlowSweep 3.4s ease-in-out infinite;
+  will-change: transform;
+}
+
+.reward-grail-shimmer {
+  animation: rewardGrailShimmer 2.8s ease-in-out infinite;
+  will-change: transform;
+}

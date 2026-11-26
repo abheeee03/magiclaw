@@ -2,9 +2,7 @@
 
 import React, { useState } from "react";
 import { motion } from "framer-motion";
-import { ExternalLink, ShieldCheck, Target, Package, Sparkles } from "lucide-react";
-import { PRIZE_TIERS, PROGRAM_ID, MACHINE_ID } from "../../lib/constants";
-import { getMachinePda } from "../../lib/pda";
+import { PRIZE_TIERS } from "../../lib/constants";
 import { PrizeSlot } from "../../lib/types";
 import { CartoonDialog } from "../Dialog";
 
@@ -23,204 +21,322 @@ function formatPrizeAmount(raw: bigint, decimals: number): string {
   return frac ? `${whole}.${frac}` : whole.toString();
 }
 
+function formatCompactCount(raw: bigint, decimals: number): string {
+  const num = Number(raw) / Math.pow(10, decimals);
+  if (!Number.isFinite(num)) return raw.toString();
+  if (num >= 1_000_000) return `${(num / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
+  if (num >= 1_000) return `${(num / 1_000).toFixed(1).replace(/\.0$/, "")}K`;
+  if (Number.isInteger(num)) return String(num);
+  return num.toLocaleString("en-US", { maximumFractionDigits: 2 });
+}
+
+interface TierCardTheme {
+  headerBg: string;
+  bodyBgTop: string;
+  bodyBgBot: string;
+  ribbonBg: string;
+  ribbonFold: string;
+  tileTop: string;
+  tileBot: string;
+  glowColor?: string;
+  rayColor?: string;
+}
+
+const TIER_CARD_THEMES: Record<number, TierCardTheme> = {
+  // Common: Steel-slate card + cyan tile & ribbon
+  0: {
+    headerBg: "#8B93A3",
+    bodyBgTop: "#6F7889",
+    bodyBgBot: "#5C6475",
+    ribbonBg: "#0284C7",
+    ribbonFold: "#075985",
+    tileTop: "#38BDF8",
+    tileBot: "#0284C7",
+  },
+  // Rare: Bright sky-blue card + purple icon tile + glowing cyan/violet lines
+  1: {
+    headerBg: "#4BB5F7",
+    bodyBgTop: "#248AE0",
+    bodyBgBot: "#1B6FC2",
+    ribbonBg: "#7C3AED",
+    ribbonFold: "#4C1D95",
+    tileTop: "#A855F7",
+    tileBot: "#6D28D9",
+    glowColor: "rgba(168, 85, 247, 0.55)",
+    rayColor: "rgba(224, 242, 254, 0.24)",
+  },
+  // Epic: Mauve-slate card + pink prism tile & rose ribbon
+  2: {
+    headerBg: "#9C7EA8",
+    bodyBgTop: "#7A5D88",
+    bodyBgBot: "#634970",
+    ribbonBg: "#E11D48",
+    ribbonFold: "#881337",
+    tileTop: "#F472B6",
+    tileBot: "#DB2777",
+  },
+  // Grail: Warm gold card + golden crown tile + glowing golden sunburst rays
+  3: {
+    headerBg: "#F7C346",
+    bodyBgTop: "#DF9216",
+    bodyBgBot: "#BD730B",
+    ribbonBg: "#DC2626",
+    ribbonFold: "#7F1D1D",
+    tileTop: "#FDE047",
+    tileBot: "#CA8A04",
+    glowColor: "rgba(250, 204, 21, 0.72)",
+    rayColor: "rgba(255, 249, 196, 0.34)",
+  },
+};
+
+const FallbackPrizeEmblem: React.FC<{ tier: number }> = ({ tier }) => {
+  if (tier === 3) {
+    return (
+      <svg viewBox="0 0 64 64" className="w-12 h-12 drop-shadow-[0_2px_2px_rgba(24,28,42,0.4)]" fill="none" aria-hidden="true">
+        <path
+          d="M10 46L6 20L21 31L32 14L43 31L58 20L54 46H10Z"
+          fill="#FFF3B0"
+          stroke="#181C2A"
+          strokeWidth="3.5"
+          strokeLinejoin="round"
+        />
+        <rect x="10" y="46" width="44" height="8" rx="3" fill="#FDE047" stroke="#181C2A" strokeWidth="3.5" />
+        <circle cx="32" cy="14" r="3.5" fill="#FF4D6D" stroke="#181C2A" strokeWidth="2.5" />
+      </svg>
+    );
+  }
+  if (tier === 2) {
+    return (
+      <svg viewBox="0 0 64 64" className="w-12 h-12 drop-shadow-[0_2px_2px_rgba(24,28,42,0.4)]" fill="none" aria-hidden="true">
+        <path
+          d="M32 8L52 24L44 52H20L12 24L32 8Z"
+          fill="#F9A8D4"
+          stroke="#181C2A"
+          strokeWidth="3.5"
+          strokeLinejoin="round"
+        />
+        <path d="M32 8L40 24L32 52L24 24L32 8Z" fill="#FDF2F8" opacity="0.65" />
+      </svg>
+    );
+  }
+  if (tier === 1) {
+    return (
+      <svg viewBox="0 0 64 64" className="w-12 h-12 drop-shadow-[0_2px_2px_rgba(24,28,42,0.4)]" fill="none" aria-hidden="true">
+        <path
+          d="M18 14H46L56 27L32 54L8 27L18 14Z"
+          fill="#FF5CA8"
+          stroke="#181C2A"
+          strokeWidth="3.5"
+          strokeLinejoin="round"
+        />
+        <path d="M8 27H56" stroke="#181C2A" strokeWidth="2.5" />
+        <path d="M24 14L20 27L32 54L44 27L40 14" stroke="#FBCFE8" strokeWidth="2.5" strokeLinejoin="round" />
+      </svg>
+    );
+  }
+  return (
+    <svg viewBox="0 0 64 64" className="w-12 h-12 drop-shadow-[0_2px_2px_rgba(24,28,42,0.4)]" fill="none" aria-hidden="true">
+      <path
+        d="M32 7C35.5 18 46 28.5 57 32C46 35.5 35.5 46 32 57C28.5 46 18 35.5 7 32C18 28.5 28.5 18 32 7Z"
+        fill="#E0F2FE"
+        stroke="#181C2A"
+        strokeWidth="3.5"
+        strokeLinejoin="round"
+      />
+      <circle cx="26" cy="30" r="2.6" fill="#181C2A" />
+      <circle cx="38" cy="30" r="2.6" fill="#181C2A" />
+      <path d="M29 36Q32 39 35 36" stroke="#181C2A" strokeWidth="2.5" strokeLinecap="round" />
+    </svg>
+  );
+};
+
 export const VaultOddsModal: React.FC<VaultOddsModalProps> = ({
   isOpen,
   onClose,
-  isDelegated = true,
   slots = [],
 }) => {
   const [failedImages, setFailedImages] = useState<Record<string, boolean>>({});
-
-  const [machinePda] = getMachinePda(MACHINE_ID);
-  const inStockSlots = slots.filter((s) => s.inStock);
+  const inStockSlots = slots
+    .filter((s) => s.inStock)
+    .sort((a, b) => {
+      if (b.tier !== a.tier) return b.tier - a.tier;
+      if (b.prizeAmount !== a.prizeAmount) {
+        return b.prizeAmount > a.prizeAmount ? 1 : -1;
+      }
+      return a.slotId - b.slotId;
+    });
 
   return (
     <CartoonDialog
       isOpen={isOpen}
       onClose={onClose}
       title="PRIZES & ODDS"
-      subtitle={`${inStockSlots.length} / 16 In Stock • ${
-        isDelegated ? "⚡ ER Live" : "Solana L1"
-      } • +3% Bullseye Bonus`}
-      className="max-w-2xl"
+      className="max-w-4xl"
+      contentClassName="px-6 sm:px-9 pb-6 sm:pb-8 pt-5"
     >
-      <div className="space-y-5">
-        {/* Live Prizes Inside Machine — Warm Golden-Cream Cards matching reference */}
-        <div className="space-y-2.5">
-          <div className="flex flex-wrap items-center justify-between gap-2 px-1">
-            <h3 className="text-xs font-extrabold uppercase tracking-wider text-[#3E200C] flex items-center gap-1.5">
-              <Package className="w-4 h-4 text-[#1E7DF2]" />
-              Cabinet Rewards
-            </h3>
-            <span className="text-[11px] font-bold text-[#0D3B8A] flex items-center gap-1">
-              <Target className="w-3.5 h-3.5 text-[#167A2E]" />
-              +3% Dead-Center Bullseye
-            </span>
-          </div>
+      {inStockSlots.length === 0 ? (
+        <div className="p-8 rounded-2xl bg-[#FDF8EE] border-2 border-dashed border-[#C8963E] text-sm font-bold text-[#6E4B2A] text-center">
+          No stocked prizes found in this cabinet yet.
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 sm:gap-5 pt-1 items-stretch">
+          {inStockSlots.map((slot, idx) => {
+            const tierCfg = PRIZE_TIERS[slot.tier] || PRIZE_TIERS[0];
+            const theme = TIER_CARD_THEMES[slot.tier] || TIER_CARD_THEMES[0];
+            const qty = formatPrizeAmount(
+              slot.prizeAmount,
+              slot.prizeDecimals
+            );
+            const compactQty = formatCompactCount(
+              slot.prizeAmount,
+              slot.prizeDecimals
+            );
+            const mintStr = slot.prizeMint.toBase58();
+            const isNft =
+              slot.prizeDecimals === 0 && slot.prizeAmount === BigInt(1);
+            const showImage = Boolean(slot.image) && !failedImages[mintStr];
+            const tokenName =
+              slot.name || slot.symbol || `Slot #${slot.slotId}`;
+            const bottomLabel = isNft
+              ? "1/1 NFT"
+              : `x${qty} ${slot.symbol || ""}`.trim();
 
-          {inStockSlots.length === 0 ? (
-            <div className="p-6 rounded-2xl bg-[#FDF8EE] border-2 border-dashed border-[#C8963E] text-xs font-bold text-[#6E4B2A] text-center">
-              No stocked prizes found in this cabinet yet.
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {inStockSlots.map((slot, idx) => {
-                const tierCfg = PRIZE_TIERS[slot.tier] || PRIZE_TIERS[0];
-                const buybackUsd = (
-                  Number(slot.fallbackBuybackUsdc) / 1_000_000
-                ).toFixed(2);
-                const qty = formatPrizeAmount(
-                  slot.prizeAmount,
-                  slot.prizeDecimals
-                );
-                const mintStr = slot.prizeMint.toBase58();
-                const isNft =
-                  slot.prizeDecimals === 0 && slot.prizeAmount === BigInt(1);
-                const showImage = Boolean(slot.image) && !failedImages[mintStr];
+            const hasGlowLines = slot.tier === 1 || slot.tier === 3;
+            const isGrail = slot.tier === 3;
 
-                return (
-                  <motion.a
-                    key={slot.slotId}
-                    initial={{ opacity: 0, y: 12, scale: 0.94 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    transition={{
-                      delay: Math.min(idx * 0.035, 0.35),
-                      type: "spring",
-                      stiffness: 320,
-                      damping: 22,
-                    }}
-                    href={`https://explorer.solana.com/address/${mintStr}?cluster=devnet`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    title={`Inspect ${slot.name || `Slot #${slot.slotId}`} (${mintStr})`}
-                    className="group relative flex items-center justify-between gap-2.5 px-3 py-2.5 rounded-2xl border-2 border-[#C8963E] transition-transform hover:-translate-y-0.5"
-                    style={{
-                      background:
-                        "linear-gradient(180deg, #FFF3B8 0%, #FCE28B 65%, #F5CE63 100%)",
-                      boxShadow:
-                        "inset 0 2px 0 rgba(255,255,255,0.75), 0 3px 0 #B8862D",
-                    }}
-                  >
-                    {/* Left Blue Rounded Square Badge (Odds / Slot) */}
+            return (
+              <motion.a
+                key={slot.slotId}
+                initial={{ opacity: 0, y: 12, scale: 0.94 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                transition={{
+                  delay: Math.min(idx * 0.03, 0.3),
+                  type: "spring",
+                  stiffness: 320,
+                  damping: 22,
+                }}
+                href={`https://explorer.solana.com/address/${mintStr}?cluster=devnet`}
+                target="_blank"
+                rel="noopener noreferrer"
+                title={`Inspect ${tokenName} (${mintStr})`}
+                className="group relative h-full flex flex-col rounded-[18px] border-[2.5px] border-[#181C2A] transition-transform hover:-translate-y-1 select-none"
+                style={{
+                  background: `linear-gradient(180deg, ${theme.bodyBgTop} 0%, ${theme.bodyBgBot} 100%)`,
+                  boxShadow:
+                    hasGlowLines && theme.glowColor
+                      ? `0 4px 0 #181C2A, 0 0 18px ${theme.glowColor}`
+                      : "0 4px 0 #181C2A",
+                }}
+              >
+                {/* Rotating radial glowing rays & sweeping diagonal highlight line for Rare & Grail */}
+                {hasGlowLines && (
+                  <div className="pointer-events-none absolute inset-0 rounded-[15px] overflow-hidden z-0">
+                    <div className="absolute inset-0 flex items-center justify-center pt-5">
+                      <div
+                        className="reward-glow-rays w-[460px] h-[460px] shrink-0"
+                        style={{
+                          background: `repeating-conic-gradient(from 0deg, ${theme.rayColor} 0deg 14deg, transparent 14deg 28deg)`,
+                        }}
+                      />
+                    </div>
                     <div
-                      className="w-12 h-12 rounded-xl flex flex-col items-center justify-center shrink-0 text-white border-2 border-[#0D3B8A] shadow-[inset_0_2px_0_rgba(255,255,255,0.45),0_2px_0_#0A295E]"
+                      className="reward-glow-sweep absolute inset-y-0 -left-1/2 w-1/2 opacity-55"
                       style={{
                         background:
-                          "linear-gradient(180deg, #4EB5FF 0%, #2589F5 55%, #166AD6 100%)",
+                          "linear-gradient(105deg, transparent 20%, rgba(255,255,255,0.45) 48%, rgba(255,255,255,0.7) 50%, rgba(255,255,255,0.45) 52%, transparent 80%)",
                       }}
-                    >
-                      <span className="text-[13px] font-black leading-none drop-shadow-[0_1px_0_#0A295E]">
-                        {tierCfg.oddsLabel}
-                      </span>
-                      <span className="text-[9px] font-extrabold opacity-90 mt-0.5">
-                        #{slot.slotId}
-                      </span>
-                    </div>
+                    />
+                  </div>
+                )}
 
-                    {/* Center Prize Title & Buyback */}
-                    <div className="flex-1 min-w-0">
-                      <div className="text-[13px] font-black text-[#3E200C] truncate leading-tight">
-                        {slot.name || `Slot #${slot.slotId}`}
-                      </div>
-                      <div className="flex items-center gap-1.5 mt-0.5 text-[10px] font-extrabold">
-                        <span className="text-[#7C4A15] uppercase">
-                          {tierCfg.name}
-                        </span>
-                        <span className="text-[#9E7B4F]">•</span>
-                        <span className="text-[#167A2E]">
-                          {buybackUsd} 🎟️
-                        </span>
-                      </div>
-                    </div>
+                {/* Bright white foreground shimmer sweep on Grail card */}
+                {isGrail && (
+                  <div className="pointer-events-none absolute inset-0 rounded-[15px] overflow-hidden z-30">
+                    <div
+                      className="reward-grail-shimmer absolute inset-y-0 -left-2/3 w-2/3"
+                      style={{
+                        background:
+                          "linear-gradient(110deg, transparent 10%, rgba(255,255,255,0.18) 34%, rgba(255,255,255,0.72) 48%, rgba(255,255,255,0.92) 50%, rgba(255,255,255,0.72) 52%, rgba(255,255,255,0.18) 66%, transparent 90%)",
+                      }}
+                    />
+                  </div>
+                )}
 
-                    {/* Right Prize Image + Bold Quantity Multiplier Badge */}
-                    <div className="relative w-12 h-12 shrink-0 flex items-center justify-center">
-                      {showImage ? (
-                        <img
-                          src={slot.image}
-                          alt={slot.name || `Slot #${slot.slotId}`}
-                          onError={() =>
-                            setFailedImages((prev) => ({
-                              ...prev,
-                              [mintStr]: true,
-                            }))
-                          }
-                          className="w-11 h-11 object-contain rounded-xl drop-shadow-[0_2px_3px_rgba(62,32,12,0.35)]"
-                        />
-                      ) : (
-                        <span className="text-3xl drop-shadow-[0_2px_2px_rgba(62,32,12,0.3)]">
-                          {slot.icon || (isNft ? "👑" : "🪙")}
-                        </span>
-                      )}
-                      <span className="absolute -bottom-1 -right-1 text-[10px] font-black text-white bg-[#3E200C] px-1.5 py-0.5 rounded-md leading-none">
-                        {isNft ? "x1" : `${qty}`}
-                      </span>
-                    </div>
-                  </motion.a>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* Fairness & Tier Odds Reference */}
-        <div className="space-y-2.5 pt-3 border-t-2 border-[#3E200C]/15">
-          <div className="flex flex-wrap items-center justify-between gap-2 px-1">
-            <h3 className="text-xs font-extrabold uppercase tracking-wider text-[#3E200C] flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-[#D97706]" />
-              Tier Grip Odds &amp; Sell-Back
-            </h3>
-            <span className="text-[10px] font-bold text-[#0D3B8A] flex items-center gap-1">
-              <ShieldCheck className="w-3.5 h-3.5 text-[#167A2E]" />
-              Verified by MagicBlock VRF
-            </span>
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            {PRIZE_TIERS.map((tier) => (
-              <div
-                key={tier.tier}
-                className="p-2.5 rounded-2xl bg-[#FDF8EE] border-2 border-[#3E200C]/20 flex flex-col justify-between shadow-[0_2px_0_rgba(62,32,12,0.14)]"
-              >
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-[11px] font-black uppercase text-[#3E200C]">
-                    {tier.name}
-                  </span>
-                  <span className="text-xs font-black text-[#1E7DF2]">
-                    {tier.oddsLabel}
+                {/* Upper Heading Band: Token Name (clean text, no glitched stroke) */}
+                <div
+                  className="relative z-10 px-3 py-2.5 rounded-t-[15px] border-b border-black/15 flex items-center justify-center min-h-[44px]"
+                  style={{ backgroundColor: theme.headerBg }}
+                >
+                  <span className="text-sm sm:text-[15px] font-black text-white text-center truncate w-full leading-tight drop-shadow-[0_1.5px_1px_rgba(15,23,42,0.45)]">
+                    {tokenName}
                   </span>
                 </div>
-                <div className="text-[10px] font-bold text-[#6E4B2A]">
-                  Buyback:{" "}
-                  <span className="text-[#167A2E]">{tier.buybackLabel}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
 
-        {/* Onchain Proof Links */}
-        <div className="p-3 rounded-2xl bg-[#FDF8EE] border-2 border-[#3E200C]/20 flex flex-wrap items-center justify-between gap-2 text-[11px] font-bold text-[#52361F]">
-          <a
-            href={`https://explorer.solana.com/address/${PROGRAM_ID.toBase58()}?cluster=devnet`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1 text-[#0D3B8A] hover:underline"
-          >
-            Program: {PROGRAM_ID.toBase58().slice(0, 8)}...
-            <ExternalLink className="w-3 h-3" />
-          </a>
-          <a
-            href={`https://explorer.solana.com/address/${machinePda.toBase58()}?cluster=devnet`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1 text-[#0D3B8A] hover:underline"
-          >
-            Machine PDA: {machinePda.toBase58().slice(0, 8)}...
-            <ExternalLink className="w-3 h-3" />
-          </a>
+                {/* Tier Ribbon Banner */}
+                <div className="relative -mt-2.5 -ml-1.5 self-start z-20">
+                  <div
+                    className="px-2.5 py-0.5 pr-4 text-[11px] font-black uppercase tracking-wider text-white shadow-[0_2px_0_rgba(0,0,0,0.3)]"
+                    style={{
+                      backgroundColor: theme.ribbonBg,
+                      clipPath: "polygon(0 0, 100% 0, 88% 100%, 0 100%)",
+                    }}
+                  >
+                    {tierCfg.name}
+                  </div>
+                  <div
+                    className="w-1.5 h-1.5"
+                    style={{
+                      backgroundColor: theme.ribbonFold,
+                      clipPath: "polygon(0 0, 100% 0, 100% 100%)",
+                    }}
+                  />
+                </div>
+
+                {/* Main Middle Part: Framed Square Icon Box + Available Token Count */}
+                <div className="relative z-10 flex-1 flex items-center justify-center pt-2 pb-3 px-3">
+                  <div
+                    className={`relative w-[82px] h-[82px] sm:w-[88px] sm:h-[88px] rounded-2xl border-[2.5px] border-[#181C2A] flex items-center justify-center overflow-hidden ${
+                      hasGlowLines
+                        ? "shadow-[inset_0_3px_0_rgba(255,255,255,0.45),0_0_14px_rgba(255,255,255,0.35),0_3px_0_rgba(0,0,0,0.28)]"
+                        : "shadow-[inset_0_3px_0_rgba(255,255,255,0.35),0_3px_0_rgba(0,0,0,0.28)]"
+                    }`}
+                    style={{
+                      background: `linear-gradient(180deg, ${theme.tileTop} 0%, ${theme.tileBot} 100%)`,
+                    }}
+                  >
+                    {showImage ? (
+                      <img
+                        src={slot.image}
+                        alt={tokenName}
+                        onError={() =>
+                          setFailedImages((prev) => ({
+                            ...prev,
+                            [mintStr]: true,
+                          }))
+                        }
+                        className="w-14 h-14 sm:w-16 sm:h-16 object-contain rounded-xl drop-shadow-[0_2px_3px_rgba(24,28,42,0.4)]"
+                      />
+                    ) : (
+                      <FallbackPrizeEmblem tier={slot.tier} />
+                    )}
+
+                    <span className="absolute bottom-1 right-1.5 px-1.5 py-0.5 rounded-md bg-[#181C2A]/75 text-xs font-black text-white leading-none">
+                      {isNft ? "1" : compactQty}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Bottom Label: Available Token Count & Symbol (no coin image, no stroke) */}
+                <div className="relative z-10 pb-3 px-2.5 text-center">
+                  <span className="text-sm sm:text-[15px] font-black text-white tracking-tight truncate block drop-shadow-[0_1.5px_1px_rgba(15,23,42,0.45)]">
+                    {bottomLabel}
+                  </span>
+                </div>
+              </motion.a>
+            );
+          })}
         </div>
-      </div>
+      )}
     </CartoonDialog>
   );
 };

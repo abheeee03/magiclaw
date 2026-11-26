@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useId } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
 export interface CartoonDialogProps {
@@ -44,98 +44,122 @@ export const DialogContent: React.FC<DialogContentProps> = ({
 };
 
 /**
- * Arched 3D blue ribbon SVG matching the reference header.
+ * Arched 3D blue ribbon SVG matching the reference header, with curved font-black text.
  */
-const RibbonHeader: React.FC<{ title: string }> = ({ title }) => (
-  <div className="pointer-events-none relative mx-auto -mt-8 flex w-[86%] items-center justify-center select-none">
-    <svg
-      viewBox="0 0 380 88"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      className="h-auto w-full drop-shadow-[0_6px_6px_rgba(8,37,92,0.42)]"
-      aria-hidden="true"
-    >
-      <defs>
-        <linearGradient
-          id="ribbonMainGrad"
-          x1="190"
-          y1="8"
-          x2="190"
-          y2="68"
-          gradientUnits="userSpaceOnUse"
+const RibbonHeader: React.FC<{ title: string }> = ({ title }) => {
+  const uid = useId().replace(/:/g, "");
+  const mainGradId = `ribbonMainGrad-${uid}`;
+  const tailGradId = `ribbonTailGrad-${uid}`;
+  const curvePathId = `ribbonTextCurve-${uid}`;
+  const fontSize = title.length > 18 ? 17 : title.length > 14 ? 19 : 22;
+
+  return (
+    <div className="pointer-events-none relative mx-auto -mt-8 sm:-mt-9 flex w-[86%] max-w-[460px] items-center justify-center select-none shrink-0">
+      <h2 className="sr-only font-black">{title}</h2>
+      <svg
+        viewBox="0 0 380 88"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+        className="h-auto w-full drop-shadow-[0_6px_6px_rgba(8,37,92,0.42)]"
+        aria-hidden="true"
+      >
+        <defs>
+          <linearGradient
+            id={mainGradId}
+            x1="190"
+            y1="8"
+            x2="190"
+            y2="68"
+            gradientUnits="userSpaceOnUse"
+          >
+            <stop offset="0%" stopColor="#3DA4FF" />
+            <stop offset="52%" stopColor="#1E7DF2" />
+            <stop offset="100%" stopColor="#1462D1" />
+          </linearGradient>
+          <linearGradient
+            id={tailGradId}
+            x1="0"
+            y1="20"
+            x2="0"
+            y2="78"
+            gradientUnits="userSpaceOnUse"
+          >
+            <stop offset="0%" stopColor="#1E73E8" />
+            <stop offset="100%" stopColor="#104FB5" />
+          </linearGradient>
+          {/* Exact centerline arch between top (M44 22 Q190 4 336 22) and bottom (Q190 49 54 66) */}
+          <path id={curvePathId} d="M 52 45.5 Q 190 28.5 328 45.5" />
+        </defs>
+
+        {/* Left Ribbon Tail */}
+        <path
+          d="M10 34 L66 24 L62 68 L18 76 L27 54 Z"
+          fill={`url(#${tailGradId})`}
+          stroke="#0D3B8A"
+          strokeWidth="3.5"
+          strokeLinejoin="round"
+        />
+        {/* Left Inner Fold Shadow */}
+        <path d="M51 64 L66 58 L62 72 Z" fill="#0B2E6E" />
+
+        {/* Right Ribbon Tail */}
+        <path
+          d="M370 34 L314 24 L318 68 L362 76 L353 54 Z"
+          fill={`url(#${tailGradId})`}
+          stroke="#0D3B8A"
+          strokeWidth="3.5"
+          strokeLinejoin="round"
+        />
+        {/* Right Inner Fold Shadow */}
+        <path d="M329 64 L314 58 L318 72 Z" fill="#0B2E6E" />
+
+        {/* Main Arched Front Ribbon */}
+        <path
+          d="M44 22 Q190 4 336 22 L326 66 Q190 49 54 66 Z"
+          fill={`url(#${mainGradId})`}
+          stroke="#0D3B8A"
+          strokeWidth="3.5"
+          strokeLinejoin="round"
+        />
+
+        {/* Top Gloss Highlight Curve */}
+        <path
+          d="M50 26 Q190 9 330 26"
+          stroke="#86D2FF"
+          strokeWidth="3.5"
+          strokeLinecap="round"
+          opacity="0.75"
+        />
+
+        {/* Bottom Inner Bevel */}
+        <path
+          d="M58 61 Q190 45 322 61"
+          stroke="#0F48A6"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          opacity="0.65"
+        />
+
+        {/* Curved Centered font-black Title */}
+        <text
+          fill="#FFFFFF"
+          fontSize={fontSize}
+          fontWeight={900}
+          className="cartoon-ribbon-title font-black"
+          textAnchor="middle"
+          dominantBaseline="central"
+          style={{
+            filter: "drop-shadow(0 2px 0 rgba(10, 44, 108, 0.85))",
+          }}
         >
-          <stop offset="0%" stopColor="#3DA4FF" />
-          <stop offset="52%" stopColor="#1E7DF2" />
-          <stop offset="100%" stopColor="#1462D1" />
-        </linearGradient>
-        <linearGradient
-          id="ribbonTailGrad"
-          x1="0"
-          y1="20"
-          x2="0"
-          y2="78"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0%" stopColor="#1E73E8" />
-          <stop offset="100%" stopColor="#104FB5" />
-        </linearGradient>
-      </defs>
-
-      {/* Left Ribbon Tail */}
-      <path
-        d="M10 34 L66 24 L62 68 L18 76 L27 54 Z"
-        fill="url(#ribbonTailGrad)"
-        stroke="#0D3B8A"
-        strokeWidth="3.5"
-        strokeLinejoin="round"
-      />
-      {/* Left Inner Fold Shadow */}
-      <path d="M51 64 L66 58 L62 72 Z" fill="#0B2E6E" />
-
-      {/* Right Ribbon Tail */}
-      <path
-        d="M370 34 L314 24 L318 68 L362 76 L353 54 Z"
-        fill="url(#ribbonTailGrad)"
-        stroke="#0D3B8A"
-        strokeWidth="3.5"
-        strokeLinejoin="round"
-      />
-      {/* Right Inner Fold Shadow */}
-      <path d="M329 64 L314 58 L318 72 Z" fill="#0B2E6E" />
-
-      {/* Main Arched Front Ribbon */}
-      <path
-        d="M44 22 Q190 4 336 22 L326 66 Q190 49 54 66 Z"
-        fill="url(#ribbonMainGrad)"
-        stroke="#0D3B8A"
-        strokeWidth="3.5"
-        strokeLinejoin="round"
-      />
-
-      {/* Top Gloss Highlight Curve */}
-      <path
-        d="M50 26 Q190 9 330 26"
-        stroke="#86D2FF"
-        strokeWidth="3.5"
-        strokeLinecap="round"
-        opacity="0.75"
-      />
-
-      {/* Bottom Inner Bevel */}
-      <path
-        d="M58 61 Q190 45 322 61"
-        stroke="#0F48A6"
-        strokeWidth="2.5"
-        strokeLinecap="round"
-        opacity="0.65"
-      />
-    </svg>
-
-    <h2 className="cartoon-ribbon-title absolute inset-x-8 top-[16%] truncate text-center text-2xl font-bold sm:text-[28px]">
-      {title}
-    </h2>
-  </div>
-);
+          <textPath href={`#${curvePathId}`} startOffset="50%">
+            {title}
+          </textPath>
+        </text>
+      </svg>
+    </div>
+  );
+};
 
 export const CartoonDialog: React.FC<CartoonDialogProps> = ({
   isOpen,
@@ -165,6 +189,8 @@ export const CartoonDialog: React.FC<CartoonDialogProps> = ({
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [isOpen, onClose]);
+
+  const hasMaxWidth = /\bmax-w-/.test(className);
 
   return (
     <AnimatePresence>
@@ -201,7 +227,9 @@ export const CartoonDialog: React.FC<CartoonDialogProps> = ({
               y: 16,
               transition: { duration: 0.16, ease: "easeIn" },
             }}
-            className={`cartoon-dialog-font cartoon-dialog-shell relative w-full max-w-[440px] max-h-[88dvh] flex flex-col rounded-[28px] border-[3px] border-[#3E200C]/35 text-slate-900 ${className}`}
+            className={`cartoon-dialog-font cartoon-dialog-shell relative w-full ${
+              hasMaxWidth ? "" : "max-w-[440px]"
+            } max-h-[88dvh] flex flex-col rounded-[28px] border-[3px] border-[#3E200C]/35 text-slate-900 ${className}`}
             onClick={(e) => e.stopPropagation()}
           >
             {/* Top Curved Ribbon Header */}
