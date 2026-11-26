@@ -594,7 +594,8 @@ export interface SnackBoxBody {
   name: string;
   symbol: string;
   icon: string;
-  mesh: THREE.Mesh;
+  mesh: THREE.Object3D;
+  disposePack?: () => void;
   ringMesh?: THREE.Mesh;
   anchorX: number;
   anchorZ: number;

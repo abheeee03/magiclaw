@@ -2,6 +2,7 @@ import {
   PublicKey,
   SystemProgram,
   SYSVAR_RENT_PUBKEY,
+  Transaction,
   TransactionInstruction,
 } from "@solana/web3.js";
 import {
@@ -26,6 +27,7 @@ import {
   erConnection,
   getDelegationStatus,
 } from "./solana";
+import { fetchOnchainPrizeMetadata } from "./metadata";
 import { MachineConfigData } from "./types";
 
 export { decodeMachineConfig };
@@ -40,7 +42,25 @@ export interface WalletTokenInfo {
   amountRaw: bigint;
   decimals: number;
   uiAmount: string;
+  name?: string;
+  symbol?: string;
+  image?: string;
 }
+
+const KNOWN_TOKEN_META: Record<string, { name: string; symbol: string }> = {
+  "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU": {
+    name: "USD Coin (Devnet)",
+    symbol: "USDC",
+  },
+  Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr: {
+    name: "USD Coin Dev",
+    symbol: "USDC",
+  },
+  So11111111111111111111111111111111111111112: {
+    name: "Wrapped SOL",
+    symbol: "SOL",
+  },
+};
 
 function toBuffer(data: Uint8Array): Buffer {
   return Buffer.from(data.buffer, data.byteOffset, data.byteLength);
@@ -90,7 +110,8 @@ export async function fetchTokenBalance(
 }
 
 /**
- * Lists all SPL token accounts owned by a wallet on Devnet.
+ * Lists all SPL token accounts owned by a wallet on Devnet, enriched with
+ * on-chain Metaplex metadata, saved local metadata, and known mint names.
  */
 export async function fetchWalletTokenAccounts(
   owner: PublicKey
@@ -98,7 +119,7 @@ export async function fetchWalletTokenAccounts(
   const res = await baseConnection.getParsedTokenAccountsByOwner(owner, {
     programId: TOKEN_PROGRAM_ID,
   });
-  return res.value
+  const baseTokens: WalletTokenInfo[] = res.value
     .map((item) => {
       const parsed = item.account.data.parsed?.info;
       if (!parsed) return null;
@@ -111,6 +132,61 @@ export async function fetchWalletTokenAccounts(
       };
     })
     .filter((x): x is WalletTokenInfo => x !== null);
+
+  if (baseTokens.length === 0) return baseTokens;
+
+  const savedMap = getSavedAdminMintMetaMap();
+  let onchainMeta: Record<
+    string,
+    { name: string; symbol: string; image?: string }
+  > = {};
+  try {
+    onchainMeta = await fetchOnchainPrizeMetadata(
+      baseTokens.map((t) => new PublicKey(t.mint))
+    );
+  } catch {
+    // Non-fatal: fall back to saved/known names
+  }
+
+  return baseTokens.map((t) => {
+    const chain = onchainMeta[t.mint];
+    const saved = savedMap[t.mint];
+    const known = KNOWN_TOKEN_META[t.mint];
+    return {
+      ...t,
+      name: chain?.name || saved?.name || known?.name,
+      symbol: chain?.symbol || saved?.symbol || known?.symbol,
+      image: chain?.image,
+    };
+  });
+}
+
+/**
+ * Formats a concise human-readable dropdown label showing token name, symbol, and available balance.
+ */
+export function formatWalletTokenOptionLabel(
+  token: WalletTokenInfo,
+  savedMeta?: SavedAdminMintMeta
+): string {
+  const name = token.name || savedMeta?.name;
+  const symbol = token.symbol || savedMeta?.symbol;
+  const isNft = token.decimals === 0 && token.amountRaw === BigInt(1);
+
+  let title: string;
+  if (name && symbol && name.toLowerCase() !== symbol.toLowerCase()) {
+    title = `${name} (${symbol})`;
+  } else if (name || symbol) {
+    title = (name || symbol)!;
+  } else {
+    title = `${isNft ? "Untitled NFT" : "Unknown Token"} (${token.mint.slice(0, 4)}...${token.mint.slice(-4)})`;
+  }
+
+  const avail = Number(token.uiAmount);
+  const formattedAvail = Number.isFinite(avail)
+    ? avail.toLocaleString("en-US", { maximumFractionDigits: 6 })
+    : token.uiAmount;
+
+  return `${title} — ${formattedAvail} available`;
 }
 
 /**
@@ -552,4 +628,100 @@ export function createUpdateMetadataV2Ix(params: {
     ],
     data: toBuffer(data),
   });
+}
+
+export interface SavedAdminMintMeta {
+  mint: string;
+  name: string;
+  symbol: string;
+  decimals: number;
+  isNft: boolean;
+  createdAt: number;
+}
+
+/**
+ * Reads saved token/NFT metadata created via `/admin/mint-prizes` from localStorage.
+ */
+export function getSavedAdminMintMetaMap(): Record<string, SavedAdminMintMeta> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem("clawvault_admin_mints_v1");
+    if (!raw) return {};
+    const list = JSON.parse(raw) as SavedAdminMintMeta[];
+    const map: Record<string, SavedAdminMintMeta> = {};
+    for (const item of list) {
+      map[item.mint] = item;
+    }
+    return map;
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Polls Solana L1 until `MachineConfig` owner returns from the Delegation Program to `PROGRAM_ID`.
+ */
+export async function waitForMachineUndelegated(
+  machineId: bigint,
+  timeoutMs: number = 25_000
+): Promise<boolean> {
+  const [machinePda] = getMachinePda(machineId);
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const info = await baseConnection.getAccountInfo(machinePda);
+    if (info && info.owner.equals(PROGRAM_ID)) {
+      return true;
+    }
+    await new Promise((r) => setTimeout(r, 700));
+  }
+  return false;
+}
+
+export interface BatchSlotAllocation {
+  slotId: number;
+  tier: number;
+  x: number;
+  z: number;
+  prizeAmountRaw: bigint;
+  fallbackBuybackUsdc: bigint;
+}
+
+/**
+ * Groups multiple `stock_prize_slot` instructions for a single prize mint into
+ * size-safe Solana L1 Transactions (`batchSize` instructions per tx).
+ */
+export function buildBatchedStockPrizeSlotTxs(params: {
+  admin: PublicKey;
+  machineId: bigint;
+  prizeMint: PublicKey;
+  priceFeed?: PublicKey;
+  allocations: BatchSlotAllocation[];
+  batchSize?: number;
+}): Transaction[] {
+  const size = Math.max(1, Math.min(8, params.batchSize ?? 5));
+  const txs: Transaction[] = [];
+
+  for (let i = 0; i < params.allocations.length; i += size) {
+    const chunk = params.allocations.slice(i, i + size);
+    const tx = new Transaction();
+    for (const item of chunk) {
+      tx.add(
+        createStockPrizeSlotIx({
+          admin: params.admin,
+          machineId: params.machineId,
+          prizeMint: params.prizeMint,
+          slotId: item.slotId,
+          tier: item.tier,
+          x: Math.max(0, Math.min(1000, item.x)),
+          z: Math.max(0, Math.min(1000, item.z)),
+          prizeAmount: item.prizeAmountRaw,
+          priceFeed: params.priceFeed,
+          fallbackBuybackUsdc: item.fallbackBuybackUsdc,
+        })
+      );
+    }
+    txs.push(tx);
+  }
+
+  return txs;
 }

@@ -13,6 +13,7 @@ import {
 import { WonPrizeInfo } from "../../lib/types";
 import SunburstBackground from "../SunBrustBackground";
 import { GameButton } from "../Button";
+import { WinningPack3D } from "../three/WinningPack3D";
 
 interface PostWinModalProps {
   prize: WonPrizeInfo | null;
@@ -34,17 +35,15 @@ export const PostWinModal: React.FC<PostWinModalProps> = ({
   const [processingAction, setProcessingAction] = useState<
     "sell" | "claim" | null
   >(null);
-  const [settledAction, setSettledAction] = useState<
-    "sold" | "claimed" | null
-  >(null);
+  const [settledAction, setSettledAction] = useState<"sold" | "claimed" | null>(
+    null,
+  );
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [imgFailed, setImgFailed] = useState(false);
 
   React.useEffect(() => {
     setSettledAction(null);
     setProcessingAction(null);
     setErrorMsg(null);
-    setImgFailed(false);
   }, [prize?.slotId, prize?.vrfRoll, isOpen]);
 
   if (!prize) return null;
@@ -114,7 +113,7 @@ export const PostWinModal: React.FC<PostWinModalProps> = ({
           </h2>
         </motion.div>
 
-        {/* Main Metadata Image */}
+        {/* Main 3D Satin Studio Winning Pack */}
         <motion.div
           initial={{ scale: 0.4, opacity: 0, rotate: -8 }}
           animate={{ scale: 1, opacity: 1, rotate: 0 }}
@@ -124,28 +123,12 @@ export const PostWinModal: React.FC<PostWinModalProps> = ({
             stiffness: 220,
             damping: 14,
           }}
-          className="my-5 sm:my-6 relative"
+          className="my-2 sm:my-3 relative flex flex-col items-center"
         >
-          <motion.div
-            animate={{ y: [0, -8, 0] }}
-            transition={{
-              repeat: Infinity,
-              duration: 2.8,
-              ease: "easeInOut",
-            }}
-            className="w-36 h-36 sm:w-44 sm:h-44 rounded-3xl bg-[#FFFDF0] border-4 border-[#5C2B00] p-2 flex items-center justify-center overflow-hidden shadow-[0_10px_0_#5C2B00,0_20px_35px_rgba(92,43,0,0.45)]"
-          >
-            {prize.image && !imgFailed ? (
-              <img
-                src={prize.image}
-                alt={prize.name}
-                onError={() => setImgFailed(true)}
-                className="w-full h-full object-cover rounded-2xl"
-              />
-            ) : (
-              <span className="text-7xl">{prize.icon}</span>
-            )}
-          </motion.div>
+          <WinningPack3D prize={prize} />
+          <span className="text-[10px] font-extrabold tracking-wide uppercase text-[#5C2B00]/75 -mt-2">
+            Drag to inspect pack
+          </span>
         </motion.div>
 
         {/* Amount of Tokens & Ticker + Prize Name */}
@@ -156,7 +139,9 @@ export const PostWinModal: React.FC<PostWinModalProps> = ({
           className="flex flex-col items-center mb-5"
         >
           <div className="text-3xl sm:text-4xl font-black text-[#3E1C00] leading-tight">
-            {prize.isNft ? `1/1 ${prize.symbol}` : `${prize.amount} ${prize.symbol}`}
+            {prize.isNft
+              ? `1/1 ${prize.symbol}`
+              : `${prize.amount} ${prize.symbol}`}
           </div>
 
           <p className="mt-1.5 text-sm sm:text-base font-extrabold text-[#4A2500]">
@@ -221,10 +206,7 @@ export const PostWinModal: React.FC<PostWinModalProps> = ({
                   ) : (
                     <span className="flex flex-col items-center leading-tight">
                       <span className="text-xs sm:text-sm font-black">
-                        SELL BACK
-                      </span>
-                      <span className="text-[10px] font-extrabold text-[#167A2E]">
-                        +{prize.sellBackUsdc.toFixed(2)} 🎟️
+                        SELL BACK +{prize.sellBackUsdc.toFixed(2)}
                       </span>
                     </span>
                   )}
@@ -248,9 +230,7 @@ export const PostWinModal: React.FC<PostWinModalProps> = ({
                   <span>CLAIMING...</span>
                 ) : (
                   <span className="flex flex-col items-center leading-tight">
-                    <span className="text-xs sm:text-sm font-black">
-                      CLAIM
-                    </span>
+                    <span className="text-xs sm:text-sm font-black">CLAIM</span>
                     <span className="text-[10px] font-extrabold opacity-95">
                       TO WALLET
                     </span>

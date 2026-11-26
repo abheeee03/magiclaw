@@ -14,10 +14,17 @@ import {
   updateLimeLCD,
 } from "./textures";
 import {
+  formatSlotPrizeAmount,
   getFlavorSpecForSlot,
   SnackBoxBody,
-  createPrizeBoxMaterials,
 } from "./prizes";
+import {
+  createBoosterPackObject,
+  getTierPackStyle,
+  PACK_DEPTH,
+  PACK_H,
+  PACK_W,
+} from "./boosterPack";
 import { PrizeSlot, WonPrizeInfo } from "../../lib/types";
 import { computeLiveBuyback, getLivePythPrice } from "../../lib/pyth";
 
@@ -1691,11 +1698,15 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
 
     const disposePrizeBody = (b: SnackBoxBody) => {
       boxesGroup.remove(b.mesh);
-      b.mesh.geometry.dispose();
-      if (Array.isArray(b.mesh.material)) {
-        b.mesh.material.forEach((m) => m.dispose());
-      } else if (b.mesh.material) {
-        b.mesh.material.dispose();
+      if (b.disposePack) {
+        b.disposePack();
+      } else if (b.mesh instanceof THREE.Mesh) {
+        b.mesh.geometry.dispose();
+        if (Array.isArray(b.mesh.material)) {
+          b.mesh.material.forEach((m) => m.dispose());
+        } else if (b.mesh.material) {
+          b.mesh.material.dispose();
+        }
       }
       if (b.ringMesh) {
         boxesGroup.remove(b.ringMesh);
@@ -2000,6 +2011,10 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
             const springAlpha = Math.min(1, h * 3.5);
             b.pos.x += (b.anchorX - b.pos.x) * springAlpha;
             b.pos.z += (b.anchorZ - b.pos.z) * springAlpha;
+            // Gently keep resting booster packs lying flat on the deck facing up
+            const targetYaw = ((b.slotId % 3) - 1) * 0.2;
+            _spinQ.setFromEuler(new THREE.Euler(-Math.PI / 2, targetYaw, 0, "YXZ"));
+            b.quat.slerp(_spinQ, Math.min(1, h * 4.5));
           }
         }
 
@@ -2083,16 +2098,33 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
         return;
       }
 
+      const PACK_SCALE = 0.098;
+      const bw = PACK_W * PACK_SCALE;
+      const bh = PACK_H * PACK_SCALE;
+      const bd = PACK_DEPTH * PACK_SCALE;
+      const maxAniso = renderer.capabilities.getMaxAnisotropy();
+
       const created: SnackBoxBody[] = [];
       stockedSlots.forEach((slot) => {
         const spec = getFlavorSpecForSlot(slot);
-        const [bw, bh, bd] = spec.dims;
-        const geo = new THREE.BoxGeometry(bw, bh, bd);
-        const mats = createPrizeBoxMaterials(slot, spec);
-        const mesh = new THREE.Mesh(geo, mats);
-        mesh.castShadow = true;
-        mesh.receiveShadow = true;
-        boxesGroup.add(mesh);
+        const tokenTitle = (slot.name || slot.symbol || spec.name).trim();
+        const amountLabel = formatSlotPrizeAmount(slot);
+        const pack = createBoosterPackObject({
+          config: {
+            tier: slot.tier,
+            tearText: "solana",
+            brandTitle: tokenTitle,
+            flavorText: "magiclaw",
+            bottomLeft: "magicblock",
+            bottomRight: amountLabel,
+            imageUrl: slot.image,
+          },
+          finish: "matte",
+          highDetail: false,
+          maxAnisotropy: maxAniso,
+        });
+        pack.group.scale.setScalar(PACK_SCALE);
+        boxesGroup.add(pack.group);
 
         const sx = THREE.MathUtils.clamp(
           (slot.x / 1000) * (CAB.gantryXMax - CAB.gantryXMin) + CAB.gantryXMin,
@@ -2107,22 +2139,17 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
         if (sx < CAB.chuteXMax + 0.14 && sz > CAB.chuteZMin - 0.14) {
           sz = CAB.chuteZMin - 0.16;
         }
-        const sy = CAB.floorY + bh / 2;
+        const sy = CAB.floorY + bd / 2;
 
-        const ringColor =
-          slot.tier === 3
-            ? 0xfacc15
-            : slot.tier === 2
-            ? 0xa855f7
-            : slot.tier === 1
-            ? 0x38bdf8
-            : 0x34d399;
-        const ringRadius = Math.max(bw, bd) * 0.62;
-        const ringGeo = new THREE.RingGeometry(ringRadius * 0.78, ringRadius, 32);
+        const ringColor = new THREE.Color(
+          getTierPackStyle(slot.tier).packColor
+        );
+        const ringRadius = Math.max(bw, bh) * 0.54;
+        const ringGeo = new THREE.RingGeometry(ringRadius * 0.82, ringRadius, 24);
         const ringMat = new THREE.MeshBasicMaterial({
           color: ringColor,
           transparent: true,
-          opacity: 0.72,
+          opacity: 0.78,
           side: THREE.DoubleSide,
           depthWrite: false,
         });
@@ -2132,7 +2159,7 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
         boxesGroup.add(ringMesh);
 
         const quat = new THREE.Quaternion().setFromEuler(
-          new THREE.Euler(0, ((slot.slotId % 3) - 1) * 0.14, 0)
+          new THREE.Euler(-Math.PI / 2, ((slot.slotId % 3) - 1) * 0.2, 0, "YXZ")
         );
 
         const body: SnackBoxBody = {
@@ -2144,14 +2171,15 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
           name: slot.name || spec.name,
           symbol: slot.symbol || "SPL",
           icon: slot.icon || spec.icon,
-          mesh,
+          mesh: pack.group,
+          disposePack: pack.dispose,
           ringMesh,
           anchorX: sx,
           anchorZ: sz,
           hx: bw / 2,
           hy: bh / 2,
           hz: bd / 2,
-          radius: Math.hypot(bw, bh, bd) * 0.36,
+          radius: Math.hypot(bw, bh, bd) * 0.34,
           pos: new THREE.Vector3(sx, sy, sz),
           vel: new THREE.Vector3(0, 0, 0),
           quat,
@@ -2163,8 +2191,8 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
           removeTimer: 0,
         };
 
-        mesh.position.copy(body.pos);
-        mesh.quaternion.copy(body.quat);
+        pack.group.position.copy(body.pos);
+        pack.group.quaternion.copy(body.quat);
         created.push(body);
       });
 

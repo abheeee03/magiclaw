@@ -14,8 +14,11 @@ import {
   CheckCircle2,
   AlertTriangle,
   ArrowRight,
+  Sparkles,
+  Target,
 } from "lucide-react";
 import { AdminShell } from "../../components/admin/AdminShell";
+import { SemiAutoRewardLoader } from "../../components/admin/SemiAutoRewardLoader";
 import {
   BULLSEYE_RADIUS,
   CAPTURE_RADIUS,
@@ -27,6 +30,7 @@ import {
 import { getMachinePda, getVaultAuthorityPda } from "../../lib/pda";
 import { baseConnection, confirmTx, erConnection, getDefaultPrizeSlots } from "../../lib/solana";
 import {
+  SavedAdminMintMeta,
   WalletTokenInfo,
   createDelegateMachineIx,
   createFundUsdcLiquidityIx,
@@ -36,24 +40,15 @@ import {
   fetchOnchainMachineConfig,
   fetchTokenBalance,
   fetchWalletTokenAccounts,
+  formatWalletTokenOptionLabel,
+  getSavedAdminMintMetaMap,
 } from "../../lib/adminSolana";
+import {
+  RewardDistributionPlan,
+  formatBaseUnits,
+  toBaseUnits,
+} from "../../lib/rewardDistributor";
 import { MachineConfigData } from "../../lib/types";
-
-function formatBaseUnits(raw: bigint, decimals: number): string {
-  if (decimals === 0) return raw.toString();
-  const div = BigInt(10) ** BigInt(decimals);
-  const whole = raw / div;
-  const frac = (raw % div).toString().padStart(decimals, "0").replace(/0+$/, "");
-  return frac ? `${whole}.${frac}` : whole.toString();
-}
-
-function toBaseUnits(amountStr: string, decimals: number): bigint {
-  const cleaned = amountStr.trim();
-  if (!cleaned) return BigInt(0);
-  const [whole, frac = ""] = cleaned.split(".");
-  const padded = frac.padEnd(decimals, "0").slice(0, decimals);
-  return BigInt(whole || "0") * BigInt(10) ** BigInt(decimals) + BigInt(padded || "0");
-}
 
 export default function AdminMachinePage() {
   const { publicKey, sendTransaction, signTransaction } = useWallet();
@@ -62,6 +57,12 @@ export default function AdminMachinePage() {
   const [machine, setMachine] = useState<MachineConfigData | null>(null);
   const [vaultUsdcBalance, setVaultUsdcBalance] = useState<bigint>(BigInt(0));
   const [walletTokens, setWalletTokens] = useState<WalletTokenInfo[]>([]);
+  const [savedMintMeta, setSavedMintMeta] = useState<
+    Record<string, SavedAdminMintMeta>
+  >({});
+  const [stockMode, setStockMode] = useState<"semi_auto" | "manual">("semi_auto");
+  const [plannedDistribution, setPlannedDistribution] =
+    useState<RewardDistributionPlan | null>(null);
   const [loading, setLoading] = useState(true);
   const [txLoading, setTxLoading] = useState(false);
 
@@ -106,6 +107,7 @@ export default function AdminMachinePage() {
 
   const refreshAll = useCallback(async () => {
     setLoading(true);
+    setSavedMintMeta(getSavedAdminMintMetaMap());
     try {
       const cfg = await fetchOnchainMachineConfig(machineId);
       setMachine(cfg);
@@ -464,7 +466,7 @@ export default function AdminMachinePage() {
                         .filter((t) => t.decimals === 6)
                         .map((t) => (
                           <option key={t.mint} value={t.mint}>
-                            {t.mint.slice(0, 8)}... ({t.uiAmount})
+                            {formatWalletTokenOptionLabel(t, savedMintMeta[t.mint])}
                           </option>
                         ))}
                     </select>
@@ -602,40 +604,78 @@ export default function AdminMachinePage() {
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
               {/* Left: 16 Slots Grid */}
               <div className="lg:col-span-7 rounded-3xl border border-slate-800 bg-slate-900/70 p-5">
-                <h2 className="font-arcade text-base font-bold text-white mb-3 flex items-center gap-2">
-                  <Package className="w-4 h-4 text-cyan-400" />
-                  16 CABINET PRIZE SLOTS (CLICK TO EDIT / STOCK)
-                </h2>
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                  <h2 className="font-arcade text-base font-bold text-white flex items-center gap-2">
+                    <Package className="w-4 h-4 text-cyan-400" />
+                    16 CABINET PRIZE SLOTS
+                  </h2>
+                  <span className="text-[10px] font-mono text-slate-400">
+                    {stockMode === "semi_auto"
+                      ? "Highlighted slots show live semi-auto distribution preview • Click any slot to edit manually"
+                      : "Click any slot to edit or stock individually"}
+                  </span>
+                </div>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                   {machine.slots.map((slot, idx) => {
-                    const tierCfg = PRIZE_TIERS[slot.tier] || PRIZE_TIERS[0];
-                    const selected = selectedSlotId === idx;
-                    const hasMint =
-                      slot.prizeMint.toBase58() !== PublicKey.default.toBase58();
+                    const planned =
+                      stockMode === "semi_auto"
+                        ? plannedDistribution?.allocations.find(
+                            (a) => a.slotId === idx
+                          )
+                        : undefined;
+                    const displayTier = planned ? planned.tier : slot.tier;
+                    const tierCfg = PRIZE_TIERS[displayTier] || PRIZE_TIERS[0];
+                    const selected =
+                      stockMode === "manual" && selectedSlotId === idx;
+                    const mintStr = slot.prizeMint.toBase58();
+                    const hasMint = mintStr !== PublicKey.default.toBase58();
+                    const slotMeta = hasMint ? savedMintMeta[mintStr] : undefined;
+                    const slotWalletTok = hasMint
+                      ? walletTokens.find((t) => t.mint === mintStr)
+                      : undefined;
+                    const slotSymbol = slotWalletTok?.symbol || slotMeta?.symbol;
+
                     return (
                       <button
                         key={idx}
                         type="button"
-                        onClick={() => selectSlot(idx)}
+                        onClick={() => {
+                          setStockMode("manual");
+                          selectSlot(idx);
+                        }}
                         className={`p-3 rounded-2xl border text-left transition cursor-pointer ${
                           selected
                             ? "border-cyan-400 bg-cyan-500/10"
+                            : planned
+                            ? "border-cyan-400/70 bg-cyan-500/10 shadow-[0_0_16px_rgba(34,211,238,0.18)]"
                             : "border-slate-800 bg-slate-950/80 hover:border-slate-700"
                         }`}
                       >
-                        <div className="flex items-center justify-between">
+                        <div className="flex items-center justify-between gap-1">
                           <span className="font-arcade text-xs font-black text-white">
                             #{idx}
                           </span>
-                          <span
-                            className={`text-[9px] font-mono px-1.5 py-0.5 rounded-full ${
-                              slot.inStock
-                                ? "bg-emerald-500/20 text-emerald-300"
-                                : "bg-slate-800 text-slate-500"
-                            }`}
-                          >
-                            {slot.inStock ? "IN STOCK" : "EMPTY"}
-                          </span>
+                          {planned ? (
+                            <span
+                              className={`text-[9px] font-mono px-1.5 py-0.5 rounded-full ${
+                                planned.wasAlreadyInStock
+                                  ? "bg-amber-500/20 text-amber-300"
+                                  : "bg-cyan-500/25 text-cyan-200"
+                              }`}
+                            >
+                              {planned.wasAlreadyInStock ? "REPLACE" : "PLANNED"}
+                            </span>
+                          ) : (
+                            <span
+                              className={`text-[9px] font-mono px-1.5 py-0.5 rounded-full ${
+                                slot.inStock
+                                  ? "bg-emerald-500/20 text-emerald-300"
+                                  : "bg-slate-800 text-slate-500"
+                              }`}
+                            >
+                              {slot.inStock ? "IN STOCK" : "EMPTY"}
+                            </span>
+                          )}
                         </div>
 
                         <div
@@ -645,164 +685,226 @@ export default function AdminMachinePage() {
                           {tierCfg.name}
                         </div>
 
-                        <div className="text-[10px] font-mono text-slate-400 mt-1 truncate">
-                          {hasMint
-                            ? `${formatBaseUnits(slot.prizeAmount, slot.prizeDecimals)} units`
-                            : "Unassigned"}
-                        </div>
-                        <div className="text-[9px] font-mono text-slate-500">
-                          ({slot.x}, {slot.z}) • $
-                          {(Number(slot.fallbackBuybackUsdc) / 1_000_000).toFixed(2)}
-                        </div>
+                        {planned ? (
+                          <>
+                            <div className="text-[10px] font-mono text-cyan-200 font-bold mt-1 truncate">
+                              +{planned.prizeAmountUi} pack
+                            </div>
+                            <div className="text-[9px] font-mono text-slate-400">
+                              ({planned.x}, {planned.z}) • $
+                              {planned.fallbackBuybackUsdFormatted}
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div className="text-[10px] font-mono text-slate-400 mt-1 truncate">
+                              {hasMint
+                                ? `${formatBaseUnits(slot.prizeAmount, slot.prizeDecimals)} ${
+                                    slotSymbol || "units"
+                                  }`
+                                : "Unassigned"}
+                            </div>
+                            <div className="text-[9px] font-mono text-slate-500">
+                              ({slot.x}, {slot.z}) • $
+                              {(Number(slot.fallbackBuybackUsdc) / 1_000_000).toFixed(2)}
+                            </div>
+                          </>
+                        )}
                       </button>
                     );
                   })}
                 </div>
               </div>
 
-              {/* Right: Stock Slot Editor */}
-              <div className="lg:col-span-5 rounded-3xl border border-slate-800 bg-slate-900/70 p-5">
-                <h2 className="font-arcade text-base font-bold text-white mb-1">
-                  STOCK SLOT #{selectedSlotId}
-                </h2>
-                <p className="text-[11px] text-slate-400 font-mono mb-3">
-                  Transfers prize tokens/NFT from your admin wallet into the machine PrizeVault PDA.
-                </p>
+              {/* Right: Semi-Auto Batch Loader / Manual Stock Editor */}
+              <div className="lg:col-span-5 rounded-3xl border border-slate-800 bg-slate-900/70 p-5 space-y-4">
+                <div className="grid grid-cols-2 gap-1.5 p-1 rounded-2xl bg-slate-950 border border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => setStockMode("semi_auto")}
+                    className={`py-2 px-3 rounded-xl text-xs font-arcade font-bold flex items-center justify-center gap-1.5 cursor-pointer transition ${
+                      stockMode === "semi_auto"
+                        ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40"
+                        : "text-slate-400 hover:text-white"
+                    }`}
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    Semi-Auto Loader
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setStockMode("manual")}
+                    className={`py-2 px-3 rounded-xl text-xs font-arcade font-bold flex items-center justify-center gap-1.5 cursor-pointer transition ${
+                      stockMode === "manual"
+                        ? "bg-blue-500/20 text-blue-300 border border-blue-500/40"
+                        : "text-slate-400 hover:text-white"
+                    }`}
+                  >
+                    <Target className="w-3.5 h-3.5" />
+                    Manual Slot #{selectedSlotId}
+                  </button>
+                </div>
 
-                {machine.slots[selectedSlotId]?.inStock && (
-                  <div className="mb-3 p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/40 text-amber-300 text-[11px] font-mono flex items-start gap-2">
-                    <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-                    <span>
-                      Slot #{selectedSlotId} is already <strong>IN STOCK</strong>. Click an <strong>EMPTY</strong> slot on the left so you don&apos;t overwrite it.
-                    </span>
+                {stockMode === "semi_auto" ? (
+                  <SemiAutoRewardLoader
+                    machine={machine}
+                    machineId={machineId}
+                    machinePda={machinePda}
+                    walletTokens={walletTokens}
+                    savedMintMeta={savedMintMeta}
+                    txLoading={txLoading}
+                    setTxLoading={setTxLoading}
+                    onPlanChange={setPlannedDistribution}
+                    onComplete={setStatusMsg}
+                    onRefresh={refreshAll}
+                  />
+                ) : (
+                  <div>
+                    <h2 className="font-arcade text-base font-bold text-white mb-1">
+                      STOCK SLOT #{selectedSlotId}
+                    </h2>
+                    <p className="text-[11px] text-slate-400 font-mono mb-3">
+                      Transfers prize tokens/NFT from your admin wallet into the machine PrizeVault PDA.
+                    </p>
+
+                    {machine.slots[selectedSlotId]?.inStock && (
+                      <div className="mb-3 p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/40 text-amber-300 text-[11px] font-mono flex items-start gap-2">
+                        <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                        <span>
+                          Slot #{selectedSlotId} is already <strong>IN STOCK</strong>. Click an <strong>EMPTY</strong> slot on the left so you don&apos;t overwrite it.
+                        </span>
+                      </div>
+                    )}
+
+                    <form onSubmit={handleStockSlot} className="space-y-3.5">
+                      <div>
+                        <label className="block text-[11px] font-mono text-slate-400 mb-1">
+                          Select Prize Token / NFT from Wallet
+                        </label>
+                        <select
+                          value={slotMintInput}
+                          onChange={(e) => {
+                            setSlotMintInput(e.target.value);
+                            const tok = walletTokens.find(
+                              (t) => t.mint === e.target.value
+                            );
+                            if (tok && tok.decimals === 0) setSlotAmountInput("1");
+                          }}
+                          className="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-xs text-cyan-300 font-mono mb-2"
+                        >
+                          <option value="">-- Choose Wallet Token / NFT --</option>
+                          {walletTokens.map((t) => {
+                            const meta = savedMintMeta[t.mint];
+                            return (
+                              <option key={t.ata} value={t.mint}>
+                                {formatWalletTokenOptionLabel(t, meta)}
+                              </option>
+                            );
+                          })}
+                        </select>
+                        <input
+                          value={slotMintInput}
+                          onChange={(e) => setSlotMintInput(e.target.value)}
+                          placeholder="Or paste Mint Pubkey..."
+                          required
+                          className="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-xs text-white font-mono"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-[11px] font-mono text-slate-400 mb-1">
+                            Pack Amount (tokens/win)
+                          </label>
+                          <input
+                            value={slotAmountInput}
+                            onChange={(e) => setSlotAmountInput(e.target.value)}
+                            required
+                            className="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-xs text-white font-mono"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-mono text-slate-400 mb-1">
+                            Tier
+                          </label>
+                          <select
+                            value={slotTier}
+                            onChange={(e) => setSlotTier(Number(e.target.value))}
+                            className="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-xs text-white font-mono"
+                          >
+                            {PRIZE_TIERS.map((t) => (
+                              <option key={t.tier} value={t.tier}>
+                                {t.tier}: {t.name} ({t.oddsLabel})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2">
+                        <div>
+                          <label className="block text-[11px] font-mono text-slate-400 mb-1">
+                            X (0-1000)
+                          </label>
+                          <input
+                            type="number"
+                            min={0}
+                            max={1000}
+                            value={slotX}
+                            onChange={(e) => setSlotX(Number(e.target.value))}
+                            className="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-xs text-white font-mono"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-mono text-slate-400 mb-1">
+                            Z (0-1000)
+                          </label>
+                          <input
+                            type="number"
+                            min={0}
+                            max={1000}
+                            value={slotZ}
+                            onChange={(e) => setSlotZ(Number(e.target.value))}
+                            className="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-xs text-white font-mono"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-mono text-slate-400 mb-1">
+                            Buyback ($)
+                          </label>
+                          <input
+                            value={slotBuybackUsd}
+                            onChange={(e) => setSlotBuybackUsd(e.target.value)}
+                            className="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-xs text-white font-mono"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-mono text-slate-400 mb-1">
+                          Pyth Price Feed (default = fixed buyback floor)
+                        </label>
+                        <input
+                          value={slotPriceFeed}
+                          onChange={(e) => setSlotPriceFeed(e.target.value)}
+                          className="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-xs text-slate-300 font-mono"
+                        />
+                      </div>
+
+                      <button
+                        type="submit"
+                        disabled={txLoading || !publicKey || Boolean(machine.isDelegated)}
+                        className="w-full py-3 rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:brightness-110 disabled:opacity-40 text-white font-arcade font-bold text-xs cursor-pointer shadow-lg"
+                      >
+                        {machine.isDelegated
+                          ? "LOCKED (DELEGATED TO ER)"
+                          : txLoading
+                          ? "STOCKING ON L1..."
+                          : `STOCK SLOT #${selectedSlotId} ON L1`}
+                      </button>
+                    </form>
                   </div>
                 )}
-
-                <form onSubmit={handleStockSlot} className="space-y-3.5">
-                  <div>
-                    <label className="block text-[11px] font-mono text-slate-400 mb-1">
-                      Select Prize Token / NFT from Wallet
-                    </label>
-                    <select
-                      value={slotMintInput}
-                      onChange={(e) => {
-                        setSlotMintInput(e.target.value);
-                        const tok = walletTokens.find(
-                          (t) => t.mint === e.target.value
-                        );
-                        if (tok && tok.decimals === 0) setSlotAmountInput("1");
-                      }}
-                      className="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-xs text-cyan-300 font-mono mb-2"
-                    >
-                      <option value="">-- Choose Wallet Token / NFT --</option>
-                      {walletTokens.map((t) => (
-                        <option key={t.ata} value={t.mint}>
-                          {t.mint.slice(0, 10)}... ({t.uiAmount}{" "}
-                          {t.decimals === 0 ? "NFT/0dec" : `${t.decimals}dec`})
-                        </option>
-                      ))}
-                    </select>
-                    <input
-                      value={slotMintInput}
-                      onChange={(e) => setSlotMintInput(e.target.value)}
-                      placeholder="Or paste Mint Pubkey..."
-                      required
-                      className="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-xs text-white font-mono"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-[11px] font-mono text-slate-400 mb-1">
-                        Pack Amount (tokens/win)
-                      </label>
-                      <input
-                        value={slotAmountInput}
-                        onChange={(e) => setSlotAmountInput(e.target.value)}
-                        required
-                        className="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-xs text-white font-mono"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-mono text-slate-400 mb-1">
-                        Tier
-                      </label>
-                      <select
-                        value={slotTier}
-                        onChange={(e) => setSlotTier(Number(e.target.value))}
-                        className="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-xs text-white font-mono"
-                      >
-                        {PRIZE_TIERS.map((t) => (
-                          <option key={t.tier} value={t.tier}>
-                            {t.tier}: {t.name} ({t.oddsLabel})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-2">
-                    <div>
-                      <label className="block text-[11px] font-mono text-slate-400 mb-1">
-                        X (0-1000)
-                      </label>
-                      <input
-                        type="number"
-                        min={0}
-                        max={1000}
-                        value={slotX}
-                        onChange={(e) => setSlotX(Number(e.target.value))}
-                        className="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-xs text-white font-mono"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-mono text-slate-400 mb-1">
-                        Z (0-1000)
-                      </label>
-                      <input
-                        type="number"
-                        min={0}
-                        max={1000}
-                        value={slotZ}
-                        onChange={(e) => setSlotZ(Number(e.target.value))}
-                        className="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-xs text-white font-mono"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-mono text-slate-400 mb-1">
-                        Buyback ($)
-                      </label>
-                      <input
-                        value={slotBuybackUsd}
-                        onChange={(e) => setSlotBuybackUsd(e.target.value)}
-                        className="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-xs text-white font-mono"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] font-mono text-slate-400 mb-1">
-                      Pyth Price Feed (default = fixed buyback floor)
-                    </label>
-                    <input
-                      value={slotPriceFeed}
-                      onChange={(e) => setSlotPriceFeed(e.target.value)}
-                      className="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-xs text-slate-300 font-mono"
-                    />
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={txLoading || !publicKey || Boolean(machine.isDelegated)}
-                    className="w-full py-3 rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:brightness-110 disabled:opacity-40 text-white font-arcade font-bold text-xs cursor-pointer shadow-lg"
-                  >
-                    {machine.isDelegated
-                      ? "LOCKED (DELEGATED TO ER)"
-                      : txLoading
-                      ? "STOCKING ON L1..."
-                      : `STOCK SLOT #${selectedSlotId} ON L1`}
-                  </button>
-                </form>
               </div>
             </div>
           </>

@@ -640,7 +640,11 @@ export default function MintPrizesPage() {
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
                           <span className="font-arcade text-xs font-bold text-white">
-                            {meta ? `${meta.name} (${meta.symbol})` : isNft ? "Devnet NFT" : "Devnet SPL"}
+                            {meta
+                              ? `${meta.name} (${meta.symbol})`
+                              : t.name && t.symbol
+                              ? `${t.name} (${t.symbol})`
+                              : t.name || t.symbol || (isNft ? "Devnet NFT" : "Devnet SPL")}
                           </span>
                           <span
                             className={`text-[10px] font-mono px-2 py-0.5 rounded-full border ${
