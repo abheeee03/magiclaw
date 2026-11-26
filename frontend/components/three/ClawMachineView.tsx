@@ -393,7 +393,12 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
         powerPreference: "high-performance",
       });
     } catch {
-      return;
+      try {
+        renderer = new THREE.WebGLRenderer({ antialias: false });
+      } catch {
+        propsRef.current.onSceneReady?.();
+        return;
+      }
     }
 
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));

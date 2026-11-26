@@ -1,11 +1,12 @@
 "use client";
 
 import React from "react";
-import Image from "next/image";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
-import { Volume2, VolumeX, Shield, Camera, Plus, Crosshair } from "lucide-react";
+import { Volume2, VolumeX, Shield, Camera, Crosshair } from "lucide-react";
 import { VirtualJoystick } from "./VirtualJoystick";
 import { TelemetryHUD } from "./TelemetryHUD";
+import { TicketBadge } from "../TicketBadge";
+import { GameButton } from "../Button";
 import { formatTickets } from "../modals/TicketsModal";
 import type { CamMode } from "../three/ClawMachineView";
 
@@ -80,119 +81,98 @@ export const ArcadeHUD: React.FC<ArcadeHUDProps> = ({
       <header
         className={`hud-header-anim ${
           isBootHudHidden ? "hud-boot-hidden" : ""
-        } relative z-20 p-2.5 sm:p-4 flex flex-wrap items-center justify-between gap-2 pointer-events-none`}
+        } relative z-20 px-2.5 pt-[max(0.625rem,env(safe-area-inset-top))] pb-2 sm:p-4 flex flex-wrap items-center justify-between gap-1.5 sm:gap-2 pointer-events-none`}
       >
-        {/* Top-Left: Tickets Balance Pill Only */}
-        <button
-          onClick={onOpenTicketsModal}
+        {/* Top-Left: 3D Arcade Ticket Badge */}
+        <div
           title="Manage Tickets, Deposit, Cashout & Faucet"
-          className="hud-glass rounded-2xl px-3.5 py-2 flex items-center gap-2.5 pointer-events-auto shadow-2xl cursor-pointer hover:border-amber-400/50 transition-all active:scale-95"
+          className="pointer-events-auto"
         >
-          <Image
-            src="/tickets/ticket-2.png"
-            alt="Tickets"
-            width={32}
-            height={32}
-            className="w-8 h-8 object-contain drop-shadow-[0_0_10px_rgba(251,191,36,0.45)]"
+          <TicketBadge
+            value={formatTickets(ticketBalance)}
+            onPlusClick={onOpenTicketsModal}
+            className="scale-[0.84] sm:scale-100 origin-left"
           />
-          <div className="flex flex-col items-start leading-tight">
-            <span className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold font-mono">
-              Tickets
-            </span>
-            <span className="font-arcade text-base sm:text-lg font-black text-amber-300">
-              {formatTickets(ticketBalance)}
-            </span>
-          </div>
-          <span className="ml-1 w-6 h-6 rounded-xl bg-amber-400/15 border border-amber-400/35 text-amber-300 flex items-center justify-center">
-            <Plus className="w-3.5 h-3.5" />
-          </span>
-        </button>
+        </div>
 
         {/* Top-Right Controls Cluster */}
-        <div className="flex flex-wrap items-center justify-end gap-2 pointer-events-auto">
-          <button
+        <div className="flex flex-wrap items-center justify-end gap-1.5 sm:gap-2 pointer-events-auto">
+          <GameButton
+            variant="primary"
+            size="sm"
             onClick={handleCyclePerspective}
             title="Toggle Camera Perspective (Keys 1–4)"
-            className="cam-pill hud-glass rounded-2xl px-3 py-2 text-xs font-arcade font-bold text-slate-100 cursor-pointer flex items-center gap-2 shadow-lg hover:border-pink-400/45"
+            leftIcon={<Camera className="w-3.5 h-3.5 text-[#1E7DF2]" />}
           >
-            <Camera className="w-3.5 h-3.5 text-amber-300" />
-            <span>Change Perspective</span>
-            <span className="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded-lg bg-white/10 text-amber-200">
+            <span className="hidden md:inline mr-1">Camera</span>
+            <span className="uppercase text-xs font-black text-[#1E7DF2]">
               {activeCamMode}
             </span>
-          </button>
+          </GameButton>
 
-          <button
+          <GameButton
+            variant={showProjection ? "danger" : "primary"}
+            size="sm"
             onClick={onToggleProjection}
             title="Toggle Red Drop Target Projection"
-            className={`hud-glass rounded-2xl px-3 py-2 text-xs font-arcade font-bold cursor-pointer flex items-center gap-2 shadow-lg transition-all ${
-              showProjection
-                ? "border border-rose-500/70 bg-rose-500/20 text-rose-200 shadow-[0_0_16px_rgba(244,63,94,0.35)]"
-                : "text-slate-100 hover:border-rose-400/45"
-            }`}
+            leftIcon={<Crosshair className="w-3.5 h-3.5" />}
           >
-            <Crosshair
-              className={`w-3.5 h-3.5 ${
-                showProjection ? "text-rose-400" : "text-slate-300"
-              }`}
-            />
-            <span>Projection</span>
-            <span
-              className={`text-[10px] font-mono uppercase px-1.5 py-0.5 rounded-lg ${
-                showProjection
-                  ? "bg-rose-500/30 text-rose-200"
-                  : "bg-white/10 text-slate-400"
-              }`}
-            >
+            <span className="hidden sm:inline mr-1">Laser</span>
+            <span className="uppercase text-xs font-black">
               {showProjection ? "ON" : "OFF"}
             </span>
-          </button>
+          </GameButton>
 
-          <button
+          <GameButton
+            variant="accent"
+            size="sm"
             onClick={onOpenOddsModal}
-            className="hud-glass rounded-2xl px-3 py-2 text-xs font-arcade font-bold text-amber-200 hover:text-white cursor-pointer flex items-center gap-1.5 shadow-lg hover:border-pink-400/40"
+            leftIcon={<Shield className="w-3.5 h-3.5" />}
           >
-            <Shield className="w-3.5 h-3.5 text-pink-400" />
             <span className="hidden sm:inline">
               PRIZES ({inStockCount}) &amp; ODDS
             </span>
             <span className="sm:hidden">PRIZES ({inStockCount})</span>
-          </button>
+          </GameButton>
 
-          <div className="wallet-adapter-wrapper min-w-[130px] flex justify-end">
+          <div className="wallet-adapter-wrapper flex justify-end pb-[4px]">
             {mounted ? (
-              <WalletMultiButton className="!bg-gradient-to-r !from-indigo-600 !to-purple-600 !rounded-2xl !h-9 !py-0 !px-3 !text-xs !font-arcade !font-bold !shadow-lg" />
+              <WalletMultiButton />
             ) : (
-              <button className="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-2xl h-9 px-3 text-xs font-arcade font-bold shadow-lg text-white opacity-80">
-                CONNECT WALLET
-              </button>
+              <GameButton variant="info" size="sm" disabled>
+                CONNECT
+              </GameButton>
             )}
           </div>
 
-          <button
+          <GameButton
+            variant={isMuted ? "danger" : "success"}
+            size="sm"
             onClick={onToggleMute}
-            className="hud-glass rounded-2xl p-2 text-slate-300 hover:text-white cursor-pointer"
             title={isMuted ? "Unmute Audio" : "Mute Audio"}
+            aria-label={isMuted ? "Unmute Audio" : "Mute Audio"}
           >
             {isMuted ? (
-              <VolumeX className="w-4 h-4 text-rose-400" />
+              <VolumeX className="w-4 h-4" />
             ) : (
-              <Volume2 className="w-4 h-4 text-emerald-400" />
+              <Volume2 className="w-4 h-4" />
             )}
-          </button>
+          </GameButton>
         </div>
       </header>
 
       {/* Dynamic Toast Alert */}
       {toastMessage && (
-        <div className="fixed top-18 sm:top-20 left-1/2 -translate-x-1/2 z-40 pointer-events-none animate-bounce">
-          <div className="hud-glass rounded-2xl px-4 py-2.5 flex items-center gap-3 border border-cyan-400/40 shadow-2xl max-w-[90vw]">
-            <span className="text-xl">{toastMessage.icon}</span>
+        <div className="fixed top-16 sm:top-20 left-1/2 -translate-x-1/2 z-40 pointer-events-none animate-bounce w-[calc(100%-2rem)] sm:w-auto flex justify-center">
+          <div className="rounded-2xl bg-[#FDF8EE] border-[3px] border-[#3E200C] shadow-[0_5px_0_#3E200C] px-3.5 py-2 sm:px-4 sm:py-2.5 flex items-center gap-2.5 sm:gap-3 max-w-md">
+            <span className="text-lg sm:text-xl shrink-0">
+              {toastMessage.icon}
+            </span>
             <div className="flex flex-col leading-tight">
-              <span className="font-arcade text-xs sm:text-sm font-extrabold text-white">
+              <span className="text-xs sm:text-sm font-black text-[#3E200C]">
                 {toastMessage.title}
               </span>
-              <span className="text-[11px] text-slate-300">
+              <span className="text-[11px] font-bold text-[#6E4B2A]">
                 {toastMessage.sub}
               </span>
             </div>
@@ -202,41 +182,44 @@ export const ArcadeHUD: React.FC<ArcadeHUDProps> = ({
 
       {/* Onboarding / Pending Prize Gate Banner */}
       {!isBootHudHidden && hasPendingPrize && (
-        <div className="relative z-20 mx-auto pointer-events-auto">
-          <button
-            onClick={onOpenWinModal}
-            className="hud-glass rounded-2xl px-4 py-2.5 border border-emerald-400/50 text-xs font-mono text-emerald-200 flex items-center gap-2.5 shadow-xl cursor-pointer hover:border-emerald-300 transition-all"
-          >
-            <span>
-              🏆 Unclaimed prize waiting! Click here to Claim to Wallet or Instant Sell-Back.
-            </span>
-          </button>
+        <div className="relative z-20 mx-auto px-3 max-w-[92vw] pointer-events-auto">
+          <GameButton variant="success" size="sm" onClick={onOpenWinModal}>
+            🏆 Unclaimed prize waiting! Click to Claim or Sell-Back
+          </GameButton>
         </div>
       )}
 
       {!isBootHudHidden &&
         !hasPendingPrize &&
         !canPlayTurn &&
-        !["DROPPING", "GRABBING", "LIFTING", "RETURNING", "RELEASING", "RESOLVING", "WINNER!"].includes(
-          gameStateText
-        ) && (
-          <div className="relative z-20 mx-auto pointer-events-auto">
-            <button
-              onClick={connected ? onOpenTicketsModal : undefined}
-              className={`hud-glass rounded-2xl px-4 py-2.5 border border-amber-500/40 text-xs font-mono text-amber-200 flex items-center gap-2.5 shadow-xl ${
-                connected ? "cursor-pointer hover:border-amber-400/70" : ""
-              }`}
-            >
-              <span>
-                {!connected
-                  ? "🔒 Connect your Solana Devnet wallet (top right) to play and win real tokens & NFTs."
-                  : !isOnchainActive
+        ![
+          "DROPPING",
+          "GRABBING",
+          "LIFTING",
+          "RETURNING",
+          "RELEASING",
+          "RESOLVING",
+          "WINNER!",
+        ].includes(gameStateText) && (
+          <div className="relative z-20 mx-auto px-3 max-w-[92vw] pointer-events-auto">
+            {connected ? (
+              <GameButton
+                variant="accent"
+                size="sm"
+                onClick={onOpenTicketsModal}
+              >
+                {!isOnchainActive
                   ? "🎟️ Click Tickets (top left) to airdrop Test USDC & buy tickets!"
                   : sessionKeyMismatch
-                  ? "🔑 Session key mismatch — click Tickets (top left) to buy tickets or re-sync session."
-                  : "🎟️ Out of tickets! Click Tickets (top left) to buy more."}
-              </span>
-            </button>
+                  ? "🔑 Session key mismatch — click to re-sync session"
+                  : "🎟️ Out of tickets! Click to buy more"}
+              </GameButton>
+            ) : (
+              <div className="rounded-2xl bg-[#FDF8EE] border-[3px] border-[#3E200C] shadow-[0_4px_0_#3E200C] px-3.5 py-2 text-[11px] sm:text-xs font-extrabold text-[#3E200C] text-center">
+                🔒 Connect your Solana Devnet wallet (top right) to play and
+                win real tokens &amp; NFTs.
+              </div>
+            )}
           </div>
         )}
 
@@ -244,10 +227,10 @@ export const ArcadeHUD: React.FC<ArcadeHUDProps> = ({
       <footer
         className={`hud-footer-anim ${
           isBootHudHidden ? "hud-boot-hidden" : ""
-        } relative z-20 p-3 sm:p-5 flex flex-col gap-2.5 pointer-events-none`}
+        } relative z-20 px-4 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-10 sm:pb-5 md:px-16 lg:px-20 flex flex-col gap-2 sm:gap-2.5 pointer-events-none`}
       >
-        <div className="flex items-end justify-between sm:justify-center sm:gap-10">
-          <div className="hud-glass rounded-3xl p-2 sm:p-2.5 flex items-center gap-3.5 pointer-events-auto shadow-2xl">
+        <div className="w-full flex items-end justify-center gap-6 sm:justify-between">
+          <div className="rounded-3xl bg-[#E0E0E0]/95 border-[3px] border-[#3E200C] shadow-[0_6px_0_#3E200C,0_14px_28px_rgba(0,0,0,0.45)] p-2 sm:p-2.5 flex items-center gap-3.5 pointer-events-auto">
             <VirtualJoystick
               onMove={onJoystickMove}
               disabled={
@@ -262,47 +245,51 @@ export const ArcadeHUD: React.FC<ArcadeHUDProps> = ({
             <div className="hidden sm:flex flex-col gap-1 pr-2 min-w-[165px]">
               <div className="flex items-center gap-2">
                 <span
-                  className={`w-2.5 h-2.5 rounded-full ${
-                    canPlayTurn
-                      ? "bg-emerald-400 shadow-[0_0_8px_#34d399]"
-                      : "bg-amber-400 shadow-[0_0_8px_#fbbf24]"
+                  className={`w-2.5 h-2.5 rounded-full border border-[#3E200C] ${
+                    canPlayTurn ? "bg-[#48dd26]" : "bg-[#ffd014]"
                   }`}
                 />
-                <span className="font-arcade text-[11px] font-extrabold tracking-wider text-lime-200">
+                <span className="text-[11px] font-black tracking-wider text-[#3E200C]">
                   {gameStateText}
                 </span>
               </div>
-              <div className="text-[10px] text-slate-400 leading-relaxed">
+              <div className="text-[10px] font-bold text-[#52361F] leading-relaxed">
                 <div>
-                  <strong className="text-slate-200">WASD / Arrows</strong> Move
-                  Claw
+                  <strong className="text-[#1e232a] font-black">
+                    WASD / Arrows
+                  </strong>{" "}
+                  Move Claw
                 </div>
                 <div>
-                  <strong className="text-slate-200">Space / Enter</strong> Drop
-                  Claw
+                  <strong className="text-[#1e232a] font-black">
+                    Space / Enter
+                  </strong>{" "}
+                  Drop Claw
                 </div>
                 <div>
-                  <strong className="text-slate-200">1–4</strong> Perspective
+                  <strong className="text-[#1e232a] font-black">1–4</strong>{" "}
+                  Perspective
                 </div>
               </div>
             </div>
           </div>
 
-          <div className="hud-glass rounded-3xl p-2.5 flex items-center justify-center pointer-events-auto shadow-2xl">
-            <button
+          <div className="rounded-3xl bg-[#E0E0E0]/95 border-[3px] border-[#3E200C] shadow-[0_6px_0_#3E200C,0_14px_28px_rgba(0,0,0,0.45)] p-2 sm:p-3 flex items-center justify-center pointer-events-auto">
+            <GameButton
+              variant="success"
+              size="lg"
               onClick={onTriggerDrop}
               title="Drop Claw (Space / Enter)"
-              className="emerald-drop-btn cursor-pointer"
             >
-              <div className="emerald-drop-cap">
-                <span className="font-arcade font-black text-xs sm:text-sm tracking-wider leading-none">
+              <div className="flex flex-col items-center leading-none">
+                <span className="text-base sm:text-xl font-black tracking-wider">
                   DROP
                 </span>
-                <span className="text-[8px] font-extrabold tracking-widest opacity-80 mt-0.5">
-                  1 TICKET
+                <span className="text-[10px] font-extrabold tracking-widest opacity-95 mt-0.5">
+                  1 🎟️
                 </span>
               </div>
-            </button>
+            </GameButton>
           </div>
         </div>
 

@@ -1,7 +1,9 @@
 "use client";
 
 import React, { useState } from "react";
-import { X, Sparkles, Ticket, LogOut, Coins } from "lucide-react";
+import { Sparkles, Ticket, LogOut, Coins } from "lucide-react";
+import { CartoonDialog } from "../Dialog";
+import { GameButton } from "../Button";
 
 interface TicketsModalProps {
   isOpen: boolean;
@@ -46,184 +48,147 @@ export const TicketsModal: React.FC<TicketsModalProps> = ({
 }) => {
   const [selectedPack, setSelectedPack] = useState<number>(5);
 
-  if (!isOpen) return null;
-
   const packCostUsdc = selectedPack * playFeeUsd;
 
+  const subtitleText = isOnchainActive
+    ? "Live Ephemeral Rollup Session"
+    : connected
+    ? `1 Ticket = ${playFeeUsd.toFixed(2)} Test USDC`
+    : "Connect Wallet to Play";
+
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md"
-      onClick={onClose}
+    <CartoonDialog
+      isOpen={isOpen}
+      onClose={onClose}
+      title="ARCADE TICKETS"
+      subtitle={subtitleText}
     >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className="relative w-full max-w-md rounded-3xl border border-amber-400/35 bg-[#0b0f1d]/95 p-6 shadow-2xl overflow-hidden"
-        style={{
-          boxShadow:
-            "0 0 50px rgba(251, 191, 36, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.08)",
-        }}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between mb-5">
-          <div className="flex items-center gap-3">
+      {/* Balances */}
+      <div className="grid grid-cols-2 gap-3 mb-4">
+        <div className="rounded-2xl bg-[#FDF8EE] border-2 border-[#3E200C]/25 p-3.5 flex flex-col shadow-[0_3px_0_rgba(62,32,12,0.18)]">
+          <span className="text-[10px] uppercase tracking-wider text-[#6E4B2A] font-bold">
+            Session Tickets
+          </span>
+          <div className="flex items-center gap-2 mt-1">
             <img
               src="/tickets/ticket-2.png"
               alt="Tickets"
-              className="w-11 h-11 object-contain drop-shadow-[0_0_12px_rgba(251,191,36,0.45)]"
+              className="w-7 h-7 object-contain drop-shadow-sm"
             />
-            <div>
-              <h2 className="font-arcade text-xl font-black tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-orange-300 to-pink-400">
-                ARCADE TICKETS
-              </h2>
-              <p className="text-[11px] text-slate-400 font-mono">
-                {isOnchainActive
-                  ? "Live Ephemeral Rollup Session"
-                  : connected
-                  ? "1 Ticket = " + playFeeUsd.toFixed(2) + " Test USDC"
-                  : "Connect Wallet to Play"}
-              </p>
-            </div>
-          </div>
-
-          <button
-            onClick={onClose}
-            aria-label="Close Tickets Dialog"
-            className="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        {/* Balances */}
-        <div className="grid grid-cols-2 gap-3 mb-5">
-          <div className="rounded-2xl bg-slate-950/85 border border-amber-400/25 p-3.5 flex flex-col">
-            <span className="text-[10px] uppercase tracking-wider text-slate-400 font-mono font-semibold">
-              Session Tickets
+            <span className="text-2xl font-black text-[#3E200C]">
+              {formatTickets(ticketBalance)}
             </span>
-            <div className="flex items-center gap-2 mt-1">
-              <img
-                src="/tickets/ticket-2.png"
-                alt="Tickets"
-                className="w-6 h-6 object-contain"
-              />
-              <span className="font-arcade text-2xl font-black text-amber-300">
-                {formatTickets(ticketBalance)}
-              </span>
-            </div>
-          </div>
-
-          <div className="rounded-2xl bg-slate-950/85 border border-white/10 p-3.5 flex flex-col">
-            <span className="text-[10px] uppercase tracking-wider text-slate-400 font-mono font-semibold">
-              Wallet Test USDC
-            </span>
-            <div className="flex items-baseline gap-1.5 mt-1">
-              <span className="font-arcade text-2xl font-black text-emerald-300">
-                {connected ? walletUsdcBalance.toFixed(2) : "—"}
-              </span>
-              {connected && (
-                <span className="text-[10px] text-slate-400 font-mono">
-                  USDC
-                </span>
-              )}
-            </div>
           </div>
         </div>
 
-        {/* Actions */}
-        {!connected ? (
-          <div className="rounded-2xl bg-slate-950/75 border border-amber-500/30 p-4 text-center text-xs font-mono text-amber-200">
-            Connect your Solana Devnet wallet in the top right to airdrop Test
-            USDC, buy tickets, or withdraw tickets back to your wallet.
-          </div>
-        ) : (
-          <div className="flex flex-col gap-3">
-            {/* Option 1: Buy Tickets from our Test USDC mint */}
-            <div className="rounded-2xl bg-slate-950/80 border border-white/10 p-3.5 flex flex-col gap-2.5">
-              <div className="flex items-center justify-between text-[11px] font-mono">
-                <span className="text-slate-200 font-bold uppercase tracking-wider">
-                  1. Buy Tickets
-                </span>
-                <span className="text-slate-400">
-                  Cost:{" "}
-                  <strong className="text-emerald-300">
-                    {packCostUsdc.toFixed(2)} Test USDC
-                  </strong>
-                </span>
-              </div>
-
-              <div className="grid grid-cols-4 gap-1.5">
-                {TICKET_PACKS.map((qty) => (
-                  <button
-                    key={qty}
-                    type="button"
-                    onClick={() => setSelectedPack(qty)}
-                    className={`rounded-xl py-1.5 text-xs font-arcade font-bold cursor-pointer border transition-all ${
-                      selectedPack === qty
-                        ? "bg-gradient-to-r from-pink-500 to-orange-500 border-orange-300 text-white shadow-md"
-                        : "bg-slate-900 border-white/10 text-slate-300 hover:bg-slate-800"
-                    }`}
-                  >
-                    {qty}🎟️
-                  </button>
-                ))}
-              </div>
-
-              <button
-                onClick={() => onBuyTickets(selectedPack)}
-                disabled={onboardingLoading || faucetLoading}
-                className="w-full rounded-2xl px-4 py-3 bg-gradient-to-r from-emerald-500 to-cyan-500 hover:brightness-110 active:scale-[0.99] text-slate-950 font-arcade text-xs font-black tracking-wide cursor-pointer flex items-center justify-center gap-2 shadow-lg disabled:opacity-50"
-              >
-                <Ticket className="w-4 h-4" />
-                <span>
-                  {onboardingLoading
-                    ? "DEPOSITING & DELEGATING..."
-                    : `BUY ${selectedPack} TICKET${selectedPack > 1 ? "S" : ""}`}
-                </span>
-              </button>
-            </div>
-
-            {/* Option 2: Airdrop Test USDC directly to user's wallet */}
-            <button
-              onClick={onAirdropUsdc}
-              disabled={faucetLoading || onboardingLoading}
-              className="w-full rounded-2xl px-4 py-3 bg-indigo-600 hover:bg-indigo-500 active:scale-[0.99] text-white font-arcade text-xs font-black tracking-wide cursor-pointer flex items-center justify-center gap-2 shadow-lg disabled:opacity-50"
-            >
-              <Sparkles className="w-4 h-4" />
-              <span>
-                {faucetLoading
-                  ? "AIRDROPPING TEST USDC..."
-                  : "2. AIRDROP 10 TEST USDC TO WALLET"}
-              </span>
-            </button>
-
-            {/* Option 3: Withdraw Tickets to Wallet (Session Test USDC -> User Wallet) */}
-            {isOnchainActive && ticketBalance > 0 && (
-              <button
-                onClick={onWithdrawTickets}
-                disabled={onboardingLoading || faucetLoading}
-                className="w-full rounded-2xl px-4 py-3 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-emerald-300 font-arcade text-xs font-bold cursor-pointer flex items-center justify-center gap-2 disabled:opacity-40"
-              >
-                <LogOut className="w-4 h-4" />
-                <span>
-                  {onboardingLoading
-                    ? "WITHDRAWING TO WALLET..."
-                    : `WITHDRAW ${formatTickets(ticketBalance)} TICKETS TO WALLET`}
-                </span>
-              </button>
+        <div className="rounded-2xl bg-[#FDF8EE] border-2 border-[#3E200C]/25 p-3.5 flex flex-col shadow-[0_3px_0_rgba(62,32,12,0.18)]">
+          <span className="text-[10px] uppercase tracking-wider text-[#6E4B2A] font-bold">
+            Wallet Test USDC
+          </span>
+          <div className="flex items-baseline gap-1.5 mt-1">
+            <span className="text-2xl font-black text-[#167A2E]">
+              {connected ? walletUsdcBalance.toFixed(2) : "—"}
+            </span>
+            {connected && (
+              <span className="text-[11px] text-[#6E4B2A] font-bold">USDC</span>
             )}
-
-            {/* Devnet SOL Gas Faucet */}
-            <button
-              onClick={onSolFaucet}
-              disabled={faucetLoading}
-              className="w-full rounded-2xl px-4 py-2.5 bg-gradient-to-r from-amber-500 to-yellow-500 hover:brightness-110 active:scale-[0.99] text-slate-950 font-arcade text-[11px] font-black tracking-wide cursor-pointer flex items-center justify-center gap-2 shadow-md disabled:opacity-50"
-            >
-              <Coins className="w-4 h-4 text-slate-950" />
-              <span>SOL FAUCET (DEVNET GAS)</span>
-            </button>
           </div>
-        )}
+        </div>
       </div>
-    </div>
+
+      {/* Actions */}
+      {!connected ? (
+        <div className="rounded-2xl bg-[#FFF6D6] border-2 border-[#C8963E] p-4 text-center text-xs font-bold text-[#52361F] shadow-[0_3px_0_rgba(184,134,45,0.35)]">
+          Connect your Solana Devnet wallet in the top right to airdrop Test
+          USDC, buy tickets, or withdraw tickets back to your wallet.
+        </div>
+      ) : (
+        <div className="flex flex-col gap-3">
+          {/* Option 1: Buy Tickets from our Test USDC mint */}
+          <div className="rounded-2xl bg-[#FDF8EE] border-2 border-[#3E200C]/25 p-3.5 flex flex-col gap-3 shadow-[0_3px_0_rgba(62,32,12,0.18)]">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-[#3E200C] font-extrabold uppercase tracking-wider">
+                1. Buy Tickets
+              </span>
+              <span className="text-[#6E4B2A] font-bold">
+                Cost:{" "}
+                <strong className="text-[#167A2E] font-black">
+                  {packCostUsdc.toFixed(2)} Test USDC
+                </strong>
+              </span>
+            </div>
+
+            <div className="grid grid-cols-4 gap-2">
+              {TICKET_PACKS.map((qty) => (
+                <GameButton
+                  key={qty}
+                  variant={selectedPack === qty ? "accent" : "primary"}
+                  size="sm"
+                  fullWidth
+                  onClick={() => setSelectedPack(qty)}
+                >
+                  {qty}🎟️
+                </GameButton>
+              ))}
+            </div>
+
+            <GameButton
+              variant="success"
+              size="md"
+              fullWidth
+              leftIcon={<Ticket className="w-4 h-4" />}
+              isLoading={onboardingLoading}
+              disabled={onboardingLoading || faucetLoading}
+              onClick={() => onBuyTickets(selectedPack)}
+            >
+              {onboardingLoading
+                ? "DEPOSITING..."
+                : `BUY ${selectedPack} TICKET${selectedPack > 1 ? "S" : ""}`}
+            </GameButton>
+          </div>
+
+          {/* Option 2: Airdrop Test USDC directly to user's wallet */}
+          <GameButton
+            variant="info"
+            size="md"
+            fullWidth
+            leftIcon={<Sparkles className="w-4 h-4" />}
+            isLoading={faucetLoading}
+            disabled={faucetLoading || onboardingLoading}
+            onClick={onAirdropUsdc}
+          >
+            {faucetLoading ? "AIRDROPPING..." : "2. AIRDROP 10 TEST USDC"}
+          </GameButton>
+
+          {/* Option 3: Withdraw Tickets to Wallet */}
+          {isOnchainActive && ticketBalance > 0 && (
+            <GameButton
+              variant="neutral"
+              size="sm"
+              fullWidth
+              leftIcon={<LogOut className="w-4 h-4" />}
+              disabled={onboardingLoading || faucetLoading}
+              onClick={onWithdrawTickets}
+            >
+              {onboardingLoading
+                ? "WITHDRAWING..."
+                : `WITHDRAW ${formatTickets(ticketBalance)} TICKETS`}
+            </GameButton>
+          )}
+
+          {/* Devnet SOL Gas Faucet */}
+          <GameButton
+            variant="accent"
+            size="sm"
+            fullWidth
+            leftIcon={<Coins className="w-4 h-4" />}
+            disabled={faucetLoading}
+            onClick={onSolFaucet}
+          >
+            SOL FAUCET (DEVNET GAS)
+          </GameButton>
+        </div>
+      )}
+    </CartoonDialog>
   );
 };

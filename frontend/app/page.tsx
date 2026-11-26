@@ -84,22 +84,31 @@ export default function ClawVaultPage() {
   const [isBootHudHidden, setIsBootHudHidden] = useState(true);
   const [coinInsertCount, setCoinInsertCount] = useState(0);
   const [isSceneReady, setIsSceneReady] = useState(false);
+  const [isLoaderFading, setIsLoaderFading] = useState(false);
   const [isLoaderDone, setIsLoaderDone] = useState(false);
   const [loaderProgress, setLoaderProgress] = useState(22);
 
   useEffect(() => {
     if (isSceneReady) {
       const t1 = setTimeout(() => setLoaderProgress(100), 0);
-      const t2 = setTimeout(() => setIsLoaderDone(true), 520);
+      const t2 = setTimeout(() => setIsLoaderFading(true), 850);
+      const t3 = setTimeout(() => setIsLoaderDone(true), 1550);
       return () => {
         clearTimeout(t1);
         clearTimeout(t2);
+        clearTimeout(t3);
       };
     }
     const interval = setInterval(() => {
       setLoaderProgress((prev) => (prev < 88 ? prev + (90 - prev) * 0.14 : prev));
     }, 120);
-    return () => clearInterval(interval);
+    const safetyTimeout = setTimeout(() => {
+      setIsSceneReady(true);
+    }, 5500);
+    return () => {
+      clearInterval(interval);
+      clearTimeout(safetyTimeout);
+    };
   }, [isSceneReady]);
 
   const mounted = useSyncExternalStore(
@@ -1003,9 +1012,9 @@ export default function ClawVaultPage() {
   const ticketBalance = playFeeUsd > 0 ? usdcBalance / playFeeUsd : usdcBalance;
 
   return (
-    <main className="relative w-screen h-screen overflow-hidden bg-[#060710] flex flex-col justify-between">
+    <main className="relative w-screen h-dvh overflow-hidden bg-[#060710] flex flex-col justify-between">
       {!isLoaderDone && (
-        <LoadingScreen progress={loaderProgress} fadingOut={isSceneReady} />
+        <LoadingScreen progress={loaderProgress} fadingOut={isLoaderFading} />
       )}
 
       {/* 3D WebGL Canvas Layer */}

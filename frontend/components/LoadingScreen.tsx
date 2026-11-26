@@ -1,11 +1,7 @@
 "use client";
 
-import React from "react";
-import { Nunito } from "next/font/google";
 import Image from "next/image";
 import FunkyProgressBar from "./loadingbar";
-
-const nunito = Nunito({ subsets: ["latin"] });
 
 interface LoadingScreenProps {
   progress?: number;
@@ -18,9 +14,9 @@ export function LoadingScreen({
 }: LoadingScreenProps) {
   return (
     <div
-      className={`fixed inset-0 z-50 h-screen w-full flex text-black bg-[#E0E0E0] flex-col items-center justify-center transition-opacity duration-500 ${
-        fadingOut ? "opacity-0 pointer-events-none" : "opacity-100"
-      } ${nunito.className}`}
+      className={`fixed inset-0 z-50 h-dvh w-full flex text-black bg-[#E0E0E0] flex-col items-center justify-center transition-all duration-700 ease-out ${
+        fadingOut ? "opacity-0 scale-[1.03] pointer-events-none" : "opacity-100 scale-100"
+      }`}
     >
       <div className="text-5xl sm:text-7xl font-black tracking-tight">
         Magiclaw

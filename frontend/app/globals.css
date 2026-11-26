@@ -1,5 +1,9 @@
-@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@700;800;900&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap');
 @import "tailwindcss";
+
+@theme inline {
+  --font-sans: var(--font-nunito), 'Nunito', system-ui, -apple-system, sans-serif;
+  --font-mono: var(--font-nunito), 'Nunito', system-ui, -apple-system, sans-serif;
+}
 
 :root {
   --background: #060710;
@@ -9,7 +13,8 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-family: var(--font-nunito), 'Nunito', system-ui, -apple-system, sans-serif;
+  font-weight: 600;
   overflow: hidden;
   user-select: none;
   -webkit-user-select: none;
@@ -17,7 +22,25 @@ body {
 }
 
 .font-arcade {
-  font-family: 'Orbitron', sans-serif;
+  font-family: var(--font-nunito), 'Nunito', system-ui, -apple-system, sans-serif;
+}
+
+.wallet-adapter-button {
+  font-family: var(--font-nunito), 'Nunito', system-ui, -apple-system, sans-serif !important;
+  font-weight: 800 !important;
+  background: linear-gradient(180deg, #38c8ff 0%, #1aafe8 50%, #0895cb 100%) !important;
+  border: 2.5px solid #071f2b !important;
+  border-radius: 12px !important;
+  box-shadow: 0 4px 0 #06658a, inset 0 2px 0 rgba(255, 255, 255, 0.55) !important;
+  color: #ffffff !important;
+  text-shadow: 0 2px 0 #042a3a !important;
+  height: 36px !important;
+  line-height: 1 !important;
+  transition: transform 0.08s ease, box-shadow 0.08s ease !important;
+}
+.wallet-adapter-button:active {
+  transform: translateY(3px) !important;
+  box-shadow: 0 1px 0 #06658a, inset 0 2px 0 rgba(255, 255, 255, 0.4) !important;
 }
 
 /* Ultra-sleek dark neon glass HUD panels */
@@ -196,4 +219,120 @@ body {
   .joy-knob { width: 40px; height: 40px; margin-left: -20px; margin-top: -20px; }
   .emerald-drop-btn { width: 78px; height: 78px; }
   .emerald-drop-cap { width: 54px; height: 54px; }
+}
+
+
+
+/* Comic / Game Text Stroke Rendering */
+.game-btn-text {
+  font-weight: 900; /* font-black */
+  paint-order: stroke fill;
+}
+
+.game-btn-accent-text {
+  -webkit-text-stroke: 3.5px #6b3e02;
+  text-shadow: 0 3px 0 #4a2b02;
+}
+
+.game-btn-success-text {
+  -webkit-text-stroke: 3.5px #113908;
+  text-shadow: 0 3px 0 #0d2b06;
+}
+
+.game-btn-primary-text {
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.15);
+}
+
+.cartoon-dialog-font {
+  font-family: var(--font-nunito), 'Nunito', system-ui, -apple-system, sans-serif;
+}
+
+/* Main dialog 3D shell */
+.cartoon-dialog-shell {
+  background: #E0E0E0;
+  box-shadow:
+    inset 0 3px 0 rgba(255, 255, 255, 0.75),
+    0 8px 0 #9e9e9e,
+    0 20px 40px rgba(0, 0, 0, 0.55);
+  animation: cartoonPopIn 0.28s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+/* Optional lower tray */
+.cartoon-dialog-footer {
+  background: #d0d0d0;
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.45);
+}
+
+/* Crisp cartoon outlined title inside the ribbon */
+.cartoon-ribbon-title {
+  color: #ffffff;
+  paint-order: stroke fill;
+  -webkit-text-stroke: 5px #0d3578;
+  text-shadow: 0 3px 0 #0a295e;
+  letter-spacing: 0.02em;
+}
+
+/* Glossy 3D red close button */
+.cartoon-close-btn {
+  background: linear-gradient(180deg, #ff4550 0%, #df1825 58%, #b80d18 100%);
+  border: 2.5px solid #960a13;
+  box-shadow:
+    inset 0 2px 1px rgba(255, 255, 255, 0.45),
+    0 4px 0 #8a0811,
+    0 7px 14px rgba(0, 0, 0, 0.4);
+  transition: transform 0.14s cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow 0.14s ease;
+}
+
+.cartoon-close-btn::before {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 16%;
+  width: 68%;
+  height: 36%;
+  border-radius: 9999px;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.55) 0%,
+    rgba(255, 255, 255, 0.05) 100%
+  );
+  pointer-events: none;
+}
+
+.cartoon-close-btn:hover {
+  transform: scale(1.07);
+}
+
+.cartoon-close-btn:active {
+  transform: translateY(3px) scale(0.95);
+  box-shadow:
+    inset 0 2px 1px rgba(255, 255, 255, 0.35),
+    0 1px 0 #8a0811,
+    0 3px 8px rgba(0, 0, 0, 0.35);
+}
+
+/* Subtle pop-in bounce */
+@keyframes cartoonPopIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.82) translateY(16px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes cartoonFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.cartoon-backdrop {
+  animation: cartoonFadeIn 0.18s ease-out forwards;
 }
