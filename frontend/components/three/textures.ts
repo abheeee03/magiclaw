@@ -591,9 +591,11 @@ export function createGlowSpriteTexture(
   const c = document.createElement("canvas");
   c.width = c.height = size;
   const ctx = c.getContext("2d")!;
-  const g = ctx.createRadialGradient(128, 128, 2, 128, 128, 128);
+  const g = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
   g.addColorStop(0.0, innerColor);
-  g.addColorStop(0.28, midColor);
+  g.addColorStop(0.18, midColor);
+  g.addColorStop(0.45, midColor.replace(/[\d.]+\)$/, "0.22)"));
+  g.addColorStop(0.75, midColor.replace(/[\d.]+\)$/, "0.05)"));
   g.addColorStop(1.0, outerColor);
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, size, size);

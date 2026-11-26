@@ -543,6 +543,21 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
     interiorFill.position.set(0.05, 1.55, 0.55);
     scene.add(interiorFill);
 
+    // Soft interior showcase light focused on the prizes/gifts on the cabinet deck
+    const giftShowcaseSpot = new THREE.SpotLight(
+      0xfff8eb,
+      0.0,
+      4.4,
+      Math.PI * 0.4,
+      0.88,
+      1.35
+    );
+    giftShowcaseSpot.position.set(0.16, 1.92, 0.32);
+    giftShowcaseSpot.target.position.set(0.12, 0.08, -0.05);
+    giftShowcaseSpot.castShadow = false;
+    scene.add(giftShowcaseSpot);
+    scene.add(giftShowcaseSpot.target);
+
     // Dark glossy reflective arcade floor
     const arcadeFloor = new THREE.Mesh(
       new THREE.CircleGeometry(18, 64),
@@ -651,7 +666,7 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
     for (let i = 0; i < 20; i++) {
       const ang = (i / 20) * Math.PI * 1.45 - Math.PI * 1.22;
       const dist = 6.2 + Math.random() * 5.5;
-      const targetOpacity = 0.18 + Math.random() * 0.22;
+      const targetOpacity = 0.16 + Math.random() * 0.2;
       const bMat = new THREE.SpriteMaterial({
         map: bokehPalette[i % bokehPalette.length],
         transparent: true,
@@ -758,8 +773,6 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
     const marqueeBorderMat = makeNeonMat(0xffe4f3, 0xff2e93);
     const marqueeEarPinkMat = makeNeonMat(0xffe4f3, 0xff2e93);
     const marqueeEarCoralMat = makeNeonMat(0xffedd5, 0xff6b2b);
-    const topperCoralMat = makeNeonMat(0xffedd5, 0xff6b2b);
-    const topperCyanMat = makeNeonMat(0xe0f2fe, 0x38bdf8);
     const neonEmeraldMat = makeNeonMat(0xd1fae5, 0x10b981);
     const coinSlotGlowMat = makeNeonMat(0xe0f2fe, 0x38bdf8);
 
@@ -1130,42 +1143,19 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
     ceilingFrame.position.set(0, 2.868, -0.02);
     canopyLidInner.add(ceilingFrame);
 
-    const topperGroup = new THREE.Group();
-    topperGroup.position.set(0.32, 3.74, 0.42);
-    topperGroup.rotation.z = -0.14;
-    const topperMain = new THREE.Mesh(
-      new THREE.BoxGeometry(0.95, 0.36, 0.08),
-      new THREE.MeshStandardMaterial({
-        color: 0x1e293b,
-        roughness: 0.3,
-        metalness: 0.6,
-      })
-    );
-    topperGroup.add(topperMain);
-    const topperStripe1 = new THREE.Mesh(
-      new THREE.BoxGeometry(0.86, 0.07, 0.095),
-      topperCoralMat
-    );
-    topperStripe1.position.y = 0.06;
-    topperGroup.add(topperStripe1);
-    const topperStripe2 = new THREE.Mesh(
-      new THREE.BoxGeometry(0.86, 0.055, 0.095),
-      topperCyanMat
-    );
-    topperStripe2.position.y = -0.06;
-    topperGroup.add(topperStripe2);
-    canopyLidInner.add(topperGroup);
-
     const marqueeGroup = new THREE.Group();
     marqueeGroup.position.set(0, 3.2, 1.07);
     canopyLidInner.add(marqueeGroup);
 
     const marqueeMat = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(0x10121c),
       map: marquee.texture,
       emissiveMap: marquee.texture,
       emissive: new THREE.Color(0xffffff),
       emissiveIntensity: 0.0,
-      roughness: 0.2,
+      roughness: 0.85,
+      metalness: 0.0,
+      envMapIntensity: 0.05,
     });
     const marqueeDisplayMesh = new THREE.Mesh(
       new THREE.PlaneGeometry(2.14, 0.56),
@@ -2239,6 +2229,7 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
       );
       ceilingSpot.intensity = 15.5 * ceil;
       interiorFill.intensity = 2.6 * ceil;
+      giftShowcaseSpot.intensity = 4.2 * ceil;
 
       const room = p.room;
       scene.environmentIntensity = THREE.MathUtils.lerp(0.02, 0.95, room);
@@ -2276,19 +2267,17 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
       neonEmeraldMat.emissiveIntensity = 2.7 * p.console;
       emeraldCapRingMat.emissiveIntensity = 1.65 * p.console;
       emeraldBtnLight.intensity = 3.2 * p.console;
-      emeraldHaloMat.opacity = 0.62 * p.console;
+      emeraldHaloMat.opacity = 0.58 * p.console;
 
-      marqueeBorderMat.emissiveIntensity = 3.4 * p.marqueeBorder;
-      marqueeEarPinkMat.emissiveIntensity = 3.2 * p.marqueeBorder;
-      marqueeEarCoralMat.emissiveIntensity = 3.2 * p.marqueeBorder;
-      topperCoralMat.emissiveIntensity = 2.4 * p.marqueeBorder;
-      topperCyanMat.emissiveIntensity = 2.4 * p.marqueeBorder;
+      marqueeBorderMat.emissiveIntensity = 3.2 * p.marqueeBorder;
+      marqueeEarPinkMat.emissiveIntensity = 3.0 * p.marqueeBorder;
+      marqueeEarCoralMat.emissiveIntensity = 3.0 * p.marqueeBorder;
 
       const mGlow = Math.max(p.marqueeBorder * 0.45, p.marqueeMatrix);
-      marqueeMat.emissiveIntensity = 1.55 * p.marqueeMatrix;
-      marqueeLightL.intensity = 3.6 * mGlow;
-      marqueeLightR.intensity = 3.6 * mGlow;
-      marqueeHaloMat.opacity = 0.34 * mGlow;
+      marqueeMat.emissiveIntensity = 1.45 * p.marqueeMatrix;
+      marqueeLightL.intensity = 3.4 * mGlow;
+      marqueeLightR.intensity = 3.4 * mGlow;
+      marqueeHaloMat.opacity = 0.28 * mGlow;
     };
 
     let currentCamMode: CamMode = propsRef.current.activeCamMode || "hero";
@@ -2308,10 +2297,6 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
     const prizesZoomEndPos = new THREE.Vector3(0.0, 2.35, 0.42);
     const prizesZoomEndTarget = new THREE.Vector3(0.0, 0.55, -0.05);
     const prizesTmpVec = new THREE.Vector3();
-
-    const easeInOutCubic = (t: number) =>
-      t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
-    const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
 
     setPrizesZoomRef.current = (zoomed: boolean) => {
       if (zoomed) {
@@ -2440,6 +2425,8 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
       g.swayVz = 0;
       g.celebrationTimer = 0;
 
+      prizesZoomPhase = "idle";
+      canopyLidGroup.rotation.x = 0;
       controls.enabled = false;
       computeScaledCamPos(bootSeq.startCamPos, bootSeq.startCamTarget, _bootStartPos);
       camera.position.copy(_bootStartPos);
@@ -2457,6 +2444,7 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
         marqueeBorder: 0,
         marqueeMatrix: 0,
       });
+      updateLimeLCD(limeLCD, getCreditsInt(), g.timer, "BOOTING...");
       marquee.update(0, false, {
         active: true,
         power: 0,
@@ -3206,14 +3194,14 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
             2.6 - Math.sin(elapsed * 18) * 1.4;
           pickupNeonMat.emissiveIntensity = 3.2 + Math.cos(elapsed * 14) * 1.1;
           marqueeBorderMat.emissiveIntensity =
-            3.8 + Math.sin(elapsed * 16) * 0.9;
+            3.6 + Math.sin(elapsed * 16) * 0.9;
         } else {
           const breathe = 0.14 * Math.sin(elapsed * 2.4);
           leftCornerNeonMat.emissiveIntensity = 3.2 + breathe;
           rightCornerNeonMat.emissiveIntensity = 3.2 - breathe;
           pickupNeonMat.emissiveIntensity = 3.1 + 0.12 * Math.sin(elapsed * 3.1);
           marqueeBorderMat.emissiveIntensity =
-            3.4 + 0.18 * Math.sin(elapsed * 2.8);
+            3.2 + 0.18 * Math.sin(elapsed * 2.8);
           neonEmeraldMat.emissiveIntensity = 2.7 + 0.28 * Math.sin(elapsed * 4.2);
         }
         marquee.update(elapsed, celebrating, null);

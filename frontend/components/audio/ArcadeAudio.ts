@@ -11,11 +11,25 @@ export class ArcadeAudio {
   private motorGain: GainNode | null = null;
   private winchOsc: OscillatorNode | null = null;
   private winchGain: GainNode | null = null;
-  private ambientGain: GainNode | null = null;
-  private roomPower: number = 0;
+  private bgm: HTMLAudioElement | null = null;
+
+  private startBgm() {
+    if (typeof window === "undefined" || this.muted) return;
+    if (!this.bgm) {
+      this.bgm = new Audio("/bgm.mp3");
+      this.bgm.loop = true;
+      this.bgm.volume = 0.24;
+      this.bgm.preload = "auto";
+    }
+    this.bgm.muted = this.muted;
+    if (this.bgm.paused) {
+      this.bgm.play().catch(() => {});
+    }
+  }
 
   public init() {
     if (typeof window === "undefined") return;
+    this.startBgm();
     if (this.ctx) {
       if (this.ctx.state === "suspended") {
         this.ctx.resume().catch(() => {});
@@ -73,39 +87,23 @@ export class ArcadeAudio {
     wFilter.connect(this.winchGain);
     this.winchGain.connect(this.ctx.destination);
     this.winchOsc.start();
-
-    // Subtle warm neon arcade room hum
-    const ambOsc = this.ctx.createOscillator();
-    ambOsc.type = "sine";
-    ambOsc.frequency.value = 60;
-    this.ambientGain = this.ctx.createGain();
-    this.ambientGain.gain.value = 0.0001;
-    ambOsc.connect(this.ambientGain);
-    this.ambientGain.connect(this.ctx.destination);
-    ambOsc.start();
   }
 
-  public setRoomPower(level: number) {
-    this.roomPower = Math.min(1, Math.max(0, level));
-    if (!this.ctx || !this.ambientGain) return;
-    const now = this.ctx.currentTime;
-    const target = this.muted
-      ? 0.0001
-      : Math.max(0.0001, 0.014 * this.roomPower);
-    this.ambientGain.gain.setTargetAtTime(target, now, 0.08);
+  public setRoomPower(_level: number) {
+    void _level;
   }
 
   public setMuted(m: boolean) {
     this.muted = m;
-    if (!this.ctx) return;
-    const now = this.ctx.currentTime;
-    if (this.ambientGain) {
-      this.ambientGain.gain.setTargetAtTime(
-        m ? 0.0001 : Math.max(0.0001, 0.014 * this.roomPower),
-        now,
-        0.08
-      );
+    if (this.bgm) {
+      this.bgm.muted = m;
+      if (m) {
+        this.bgm.pause();
+      } else {
+        this.bgm.play().catch(() => {});
+      }
     }
+    if (!this.ctx) return;
     if (m) {
       this.updateMotor(0);
       this.setWinch(0);
