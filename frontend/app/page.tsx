@@ -9,6 +9,7 @@ import { PostWinModal } from "../components/modals/PostWinModal";
 import { VaultOddsModal } from "../components/modals/VaultOddsModal";
 import { TicketsModal } from "../components/modals/TicketsModal";
 import { SettingsModal } from "../components/modals/SettingsModal";
+import { HowToPlayModal } from "../components/modals/HowToPlayModal";
 import { LoadingScreen } from "../components/LoadingScreen";
 import { ArcadeToastData, ArcadeToastVariant } from "../components/ArcadeToast";
 import { arcadeAudio } from "../components/audio/ArcadeAudio";
@@ -127,6 +128,8 @@ export default function ClawVaultPage() {
   const [isPrizesZoomActive, setIsPrizesZoomActive] = useState(false);
   const [isTicketsModalOpen, setIsTicketsModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [isHowToPlayOpen, setIsHowToPlayOpen] = useState(false);
+  const bootAutoGuideCheckedRef = useRef(false);
   const [wonPrize, setWonPrize] = useState<WonPrizeInfo | null>(null);
   const [isWinModalOpen, setIsWinModalOpen] = useState(false);
   const [isPendingClaimOnly, setIsPendingClaimOnly] = useState(false);
@@ -1253,7 +1256,28 @@ export default function ClawVaultPage() {
           isPrizesZoomed={isPrizesZoomActive}
           onPrizesZoomComplete={() => setIsOddsModalOpen(true)}
           onSceneReady={handleSceneReady}
-          onBootStateChange={(hudHidden) => setIsBootHudHidden(hudHidden)}
+          onBootStateChange={(hudHidden, booting) => {
+            setIsBootHudHidden(hudHidden);
+            if (!hudHidden && !booting && !bootAutoGuideCheckedRef.current) {
+              bootAutoGuideCheckedRef.current = true;
+              try {
+                const seen = window.localStorage.getItem(
+                  "magiclaw_how_to_play_seen_v1"
+                );
+                if (!seen) {
+                  window.localStorage.setItem(
+                    "magiclaw_how_to_play_seen_v1",
+                    "1"
+                  );
+                  if (!isWinModalOpen) {
+                    setIsHowToPlayOpen(true);
+                  }
+                }
+              } catch {
+                // Ignore storage errors
+              }
+            }
+          }}
           onClawStateChange={handleClawStateChange}
         />
       </div>
@@ -1278,6 +1302,7 @@ export default function ClawVaultPage() {
         onOpenTicketsModal={() => setIsTicketsModalOpen(true)}
         onCamModeChange={setActiveCamMode}
         onOpenOddsModal={() => setIsPrizesZoomActive(true)}
+        onOpenHowToPlayModal={() => setIsHowToPlayOpen(true)}
         onOpenSettingsModal={() => setIsSettingsModalOpen(true)}
         onCloseToast={closeToast}
         onJoystickMove={setVirtualJoyVector}
@@ -1352,6 +1377,12 @@ export default function ClawVaultPage() {
         onToggleSfxEnabled={toggleSfxEnabled}
         onToggleProjection={toggleProjection}
         onResetDefaults={handleResetSettings}
+      />
+
+      <HowToPlayModal
+        isOpen={isHowToPlayOpen}
+        onClose={() => setIsHowToPlayOpen(false)}
+        onOpenRewards={() => setIsPrizesZoomActive(true)}
       />
     </main>
   );

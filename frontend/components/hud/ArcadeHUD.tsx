@@ -2,7 +2,7 @@
 
 import React from "react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
-import { Shield, Camera } from "lucide-react";
+import { Shield, Camera, HelpCircle } from "lucide-react";
 import { VirtualJoystick } from "./VirtualJoystick";
 import { TicketBadge } from "../TicketBadge";
 import { GameButton } from "../Button";
@@ -28,6 +28,7 @@ export interface ArcadeHUDProps {
   onOpenTicketsModal: () => void;
   onCamModeChange: (mode: CamMode) => void;
   onOpenOddsModal: () => void;
+  onOpenHowToPlayModal: () => void;
   onOpenSettingsModal: () => void;
   onCloseToast: () => void;
   onJoystickMove: (vector: { x: number; y: number }) => void;
@@ -50,6 +51,7 @@ export const ArcadeHUD: React.FC<ArcadeHUDProps> = ({
   onOpenTicketsModal,
   onCamModeChange,
   onOpenOddsModal,
+  onOpenHowToPlayModal,
   onOpenSettingsModal,
   onCloseToast,
   onJoystickMove,
@@ -115,6 +117,17 @@ export const ArcadeHUD: React.FC<ArcadeHUDProps> = ({
               </GameButton>
             )}
           </div>
+
+          <GameButton
+            variant="info"
+            size="sm"
+            onClick={onOpenHowToPlayModal}
+            title="How to Play Magiclaw"
+            leftIcon={<HelpCircle className="w-3.5 h-3.5" />}
+          >
+            <span className="hidden sm:inline">HOW TO PLAY</span>
+            <span className="sm:hidden">GUIDE</span>
+          </GameButton>
 
           <button
             type="button"
