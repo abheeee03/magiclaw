@@ -2,6 +2,8 @@
 
 **Provably fair, zero-database, real-time 3D arcade claw machine on Solana — powered by MagicBlock**
 
+<img width="1672" height="941" alt="Magiclaw Claw Arcade Banner" src="https://github.com/user-attachments/assets/95914ecb-788e-4583-8ad1-86e834ca6197" />
+
 MagiClaw brings **Entertainment Finance** fully on-chain: consumers deposit USDC, steer a physics-driven 3D claw in real time with zero wallet popups, pull collectible SPL token and NFT booster packs under cryptographically verifiable randomness, and choose immediately between **instant USDC buyback** or **L1 token custody**.
 
 ---
