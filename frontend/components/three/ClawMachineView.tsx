@@ -43,9 +43,14 @@ export interface ClawMachineViewProps {
   usdcBalance?: string;
   isSteeringAllowed?: boolean;
   isOnchainActive?: boolean;
+  isPracticeMode?: boolean;
   onchainVrfResult?: OnchainVrfResult | null;
   onSteerDelta?: (dx: number, dz: number) => void;
   onDropTriggered?: (clientSeed: number, clawX: number, clawZ: number) => void;
+  onPracticeOutcome?: (
+    outcome: "Miss" | "Slipped" | "Won",
+    slotName?: string
+  ) => void;
   onWinPrize?: (prize: WonPrizeInfo) => void;
   activeCamMode: CamMode;
   onCamModeChange?: (mode: CamMode) => void;
@@ -216,9 +221,11 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
   usdcBalance = "0.00",
   isSteeringAllowed = true,
   isOnchainActive = false,
+  isPracticeMode = false,
   onchainVrfResult = null,
   onSteerDelta,
   onDropTriggered,
+  onPracticeOutcome,
   onWinPrize,
   activeCamMode = "hero",
   onCamModeChange,
@@ -242,9 +249,11 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
     usdcBalance,
     isSteeringAllowed,
     isOnchainActive,
+    isPracticeMode,
     onchainVrfResult,
     onSteerDelta,
     onDropTriggered,
+    onPracticeOutcome,
     onWinPrize,
     activeCamMode,
     onCamModeChange,
@@ -265,9 +274,11 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
       usdcBalance,
       isSteeringAllowed,
       isOnchainActive,
+      isPracticeMode,
       onchainVrfResult,
       onSteerDelta,
       onDropTriggered,
+      onPracticeOutcome,
       onWinPrize,
       activeCamMode,
       onCamModeChange,
@@ -305,6 +316,8 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
     willSlip: false,
     slipThresholdY: 1.4,
     slipAtReturn: false,
+    slippedThisTurn: false,
+    releasedOverChute: false,
     wonThisTurn: false,
     celebrationTimer: 0,
     dropBtnPress: 0,
@@ -378,6 +391,8 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
     g.stateTime = 0;
     g.targetClawOpen = 1.0;
     g.wonThisTurn = false;
+    g.slippedThisTurn = false;
+    g.releasedOverChute = false;
     g.grabbedBox = null;
     g.lastReleasedBox = null;
     g.willSlip = false;
@@ -1838,21 +1853,26 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
 
     const emitWinPrize = (box: SnackBoxBody) => {
       if (box.winEmitted) return;
-      if (!propsRef.current.isOnchainActive) return;
+      if (!propsRef.current.isOnchainActive && !propsRef.current.isPracticeMode) {
+        return;
+      }
+      const g = gameRef.current;
+      if (!propsRef.current.isOnchainActive && g.slippedThisTurn) {
+        return;
+      }
       box.winEmitted = true;
       box.won = true;
       box.removeTimer = 0;
       if (box.ringMesh) box.ringMesh.visible = false;
-      const g = gameRef.current;
       g.wonThisTurn = true;
       g.celebrationTimer = 4.6;
 
       arcadeAudio.playWinJingle();
       spawnWinConfetti();
 
-      const vrf = propsRef.current.onchainVrfResult;
-      const resolvedSlotId =
-        propsRef.current.isOnchainActive && vrf ? vrf.targetSlot : box.slotId;
+      const useOnchain = Boolean(propsRef.current.isOnchainActive);
+      const vrf = useOnchain ? propsRef.current.onchainVrfResult : null;
+      const resolvedSlotId = useOnchain && vrf ? vrf.targetSlot : box.slotId;
       const onchainSlot = propsRef.current.slots?.find(
         (s) => s.slotId === resolvedSlotId
       );
@@ -1875,7 +1895,14 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
       );
       const baseBps =
         [6500, 3200, 1200, 400][onchainSlot?.tier ?? box.tier] || 6500;
-      const isBull = vrf?.isBullseye ?? false;
+      const isBull = useOnchain ? (vrf?.isBullseye ?? false) : false;
+
+      if (!useOnchain && propsRef.current.isPracticeMode) {
+        propsRef.current.onPracticeOutcome?.(
+          "Won",
+          onchainSlot?.name || box.name
+        );
+      }
 
       propsRef.current.onWinPrize?.({
         slotId: resolvedSlotId,
@@ -1954,8 +1981,13 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
               !b.won &&
               b.pos.y < -0.28 &&
               !silent &&
-              propsRef.current.isOnchainActive &&
-              propsRef.current.onchainVrfResult?.outcome === "Won"
+              ((propsRef.current.isOnchainActive &&
+                propsRef.current.onchainVrfResult?.outcome === "Won") ||
+                (!propsRef.current.isOnchainActive &&
+                  propsRef.current.isPracticeMode &&
+                  !gameRef.current.slippedThisTurn &&
+                  gameRef.current.releasedOverChute &&
+                  b === gameRef.current.lastReleasedBox))
             ) {
               emitWinPrize(b);
             }
@@ -2071,9 +2103,29 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
         if (b.won) {
           b.removeTimer += dt;
           if (b.removeTimer > 2.4) {
-            disposePrizeBody(b);
-            boxes.splice(i, 1);
-            continue;
+            if (propsRef.current.isPracticeMode && !propsRef.current.isOnchainActive) {
+              // In Practice Mode, respawn the demo pack neatly at its anchor spot
+              b.won = false;
+              b.winEmitted = false;
+              b.grabbed = false;
+              b.removeTimer = 0;
+              b.pos.set(b.anchorX, CAB.floorY + b.hz, b.anchorZ);
+              b.vel.set(0, 0, 0);
+              b.angVel.set(0, 0, 0);
+              b.quat.setFromEuler(
+                new THREE.Euler(
+                  -Math.PI / 2,
+                  ((b.slotId % 3) - 1) * 0.2,
+                  0,
+                  "YXZ"
+                )
+              );
+              if (b.ringMesh) b.ringMesh.visible = true;
+            } else {
+              disposePrizeBody(b);
+              boxes.splice(i, 1);
+              continue;
+            }
           }
         }
         b.mesh.position.copy(b.pos);
@@ -2386,11 +2438,26 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
       const b = g.grabbedBox;
       if (!b) return;
       b.grabbed = false;
-      b.vel.set(
-        g.gantryVx * 0.45 + (Math.random() - 0.5) * (fromSlip ? 0.45 : 0.14),
-        fromSlip ? -0.35 : -0.15,
-        g.gantryVz * 0.45 + (Math.random() - 0.5) * (fromSlip ? 0.45 : 0.14)
-      );
+      if (fromSlip) {
+        g.slippedThisTurn = true;
+        g.releasedOverChute = false;
+        // Keep slipped packs out of the front-left prize chute
+        if (b.pos.x < CAB.chuteXMax + 0.16 && b.pos.z > CAB.chuteZMin - 0.16) {
+          b.pos.x = Math.max(b.pos.x, CAB.chuteXMax + 0.16);
+          b.pos.z = Math.min(b.pos.z, CAB.chuteZMin - 0.16);
+        }
+        b.vel.set(
+          Math.max(0, g.gantryVx * 0.25) + (Math.random() - 0.5) * 0.35,
+          -0.4,
+          Math.min(0, g.gantryVz * 0.25) + (Math.random() - 0.5) * 0.35
+        );
+      } else {
+        b.vel.set(
+          g.gantryVx * 0.45 + (Math.random() - 0.5) * 0.14,
+          -0.15,
+          g.gantryVz * 0.45 + (Math.random() - 0.5) * 0.14
+        );
+      }
       b.angVel.set(
         (Math.random() - 0.5) * (fromSlip ? 5.0 : 2.2),
         (Math.random() - 0.5) * 2.5,
@@ -2400,6 +2467,9 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
       g.grabbedBox = null;
       if (fromSlip) {
         arcadeAudio.playBoxClack(0.6);
+        if (propsRef.current.isPracticeMode && !propsRef.current.isOnchainActive) {
+          propsRef.current.onPracticeOutcome?.("Slipped", b.name);
+        }
       }
     };
 
@@ -2710,6 +2780,9 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
       }
 
       if (!bestBox) {
+        if (propsRef.current.isPracticeMode && !propsRef.current.isOnchainActive) {
+          propsRef.current.onPracticeOutcome?.("Miss");
+        }
         boxes.forEach((b) => {
           if (b.won) return;
           const dx = b.pos.x - clawTipX;
@@ -2733,6 +2806,30 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
         bestBox.pos.x - clawTipX,
         bestBox.pos.z - clawTipZ
       );
+
+      if (propsRef.current.isPracticeMode && !propsRef.current.isOnchainActive) {
+        g.grabbedBox = bestBox;
+        bestBox.grabbed = true;
+        bestBox.vel.set(0, 0, 0);
+        bestBox.angVel.set(0, 0, 0);
+        g.grabOffset.set(
+          THREE.MathUtils.clamp(bestBox.pos.x - clawTipX, -0.055, 0.055),
+          -0.33,
+          THREE.MathUtils.clamp(bestBox.pos.z - clawTipZ, -0.055, 0.055)
+        );
+        const tierWinProb = [0.65, 0.32, 0.12, 0.04][bestBox.tier] ?? 0.65;
+        const bullseyeBonus = horizDist < 0.09 ? 0.03 : 0;
+        g.willSlip = Math.random() >= Math.min(0.99, tierWinProb + bullseyeBonus);
+        g.slipThresholdY = THREE.MathUtils.lerp(1.18, 1.92, Math.random());
+        const distToChute = Math.hypot(
+          CAB.chuteCenterX - g.gantryX,
+          CAB.chuteCenterZ - g.gantryZ
+        );
+        g.slipAtReturn = g.willSlip && distToChute > 0.95 && Math.random() < 0.35;
+        arcadeAudio.playBoxClack(0.75);
+        return;
+      }
+
       const alignment = THREE.MathUtils.clamp(1 - horizDist / 0.27, 0, 1);
       const effectiveGrip = alignment * bestBox.spec.gripFactor;
 
@@ -3087,7 +3184,7 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
               g.grabbedBox &&
               g.willSlip &&
               g.slipAtReturn &&
-              g.stateTime > 0.28
+              (g.stateTime > 0.22 || dist <= 0.64)
             ) {
               releaseGrabbedBox(true);
               g.willSlip = false;
@@ -3098,20 +3195,31 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
             g.gantryVx = 0;
             g.gantryVz = 0;
             arcadeAudio.updateMotor(0);
+            if (g.grabbedBox && g.willSlip) {
+              releaseGrabbedBox(true);
+              g.willSlip = false;
+            }
             g.state = STATE.RELEASING;
             g.stateTime = 0;
             g.targetClawOpen = 1.0;
             arcadeAudio.playPneumaticSnap(true);
-            if (g.grabbedBox) releaseGrabbedBox(false);
+            if (g.grabbedBox && !g.slippedThisTurn) {
+              g.releasedOverChute = true;
+              releaseGrabbedBox(false);
+            }
           }
         } else if (g.state === STATE.RELEASING) {
           // Ensure win modal triggers cleanly once released over chute
           if (
             g.stateTime >= 0.35 &&
+            g.releasedOverChute &&
+            !g.slippedThisTurn &&
             g.lastReleasedBox &&
             !g.lastReleasedBox.winEmitted &&
-            propsRef.current.isOnchainActive &&
-            propsRef.current.onchainVrfResult?.outcome === "Won"
+            ((propsRef.current.isOnchainActive &&
+              propsRef.current.onchainVrfResult?.outcome === "Won") ||
+              (!propsRef.current.isOnchainActive &&
+                propsRef.current.isPracticeMode))
           ) {
             emitWinPrize(g.lastReleasedBox);
           }
@@ -3131,6 +3239,8 @@ export const ClawMachineView: React.FC<ClawMachineViewProps> = ({
             g.lastTickSec = 25;
             g.stateTime = 0;
             g.lastReleasedBox = null;
+            g.slippedThisTurn = false;
+            g.releasedOverChute = false;
           }
         }
       }

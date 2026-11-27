@@ -19,6 +19,7 @@ interface PostWinModalProps {
   prize: WonPrizeInfo | null;
   isOpen: boolean;
   pendingClaimOnly?: boolean;
+  isPracticeMode?: boolean;
   onClose: () => void;
   onSellBack: () => Promise<void>;
   onClaimToWallet: () => Promise<void>;
@@ -28,6 +29,7 @@ export const PostWinModal: React.FC<PostWinModalProps> = ({
   prize,
   isOpen,
   pendingClaimOnly = false,
+  isPracticeMode = false,
   onClose,
   onSellBack,
   onClaimToWallet,
@@ -103,7 +105,8 @@ export const PostWinModal: React.FC<PostWinModalProps> = ({
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#FFFDF0]/90 border-2 border-[#B86B00] text-[11px] font-extrabold text-[#6B3E02] shadow-[0_3px_0_rgba(140,75,0,0.35)] mb-2">
             <Sparkles className="w-3.5 h-3.5 text-[#D97706]" />
             <span>
-              {prize.tierName.toUpperCase()} • VRF VERIFIED
+              {prize.tierName.toUpperCase()} •{" "}
+              {isPracticeMode ? "PRACTICE DEMO" : "VRF VERIFIED"}
               {prize.isBullseye ? " • 🎯 +3%" : ""}
             </span>
           </span>
@@ -149,8 +152,29 @@ export const PostWinModal: React.FC<PostWinModalProps> = ({
           </p>
         </motion.div>
 
-        {/* Settled State or Side-by-Side Action Buttons */}
-        {settledAction ? (
+        {/* Settled State, Practice Demo Action, or Side-by-Side Action Buttons */}
+        {isPracticeMode ? (
+          <motion.div
+            initial={{ y: 24, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ delay: 0.36, duration: 0.35 }}
+            className="w-full max-w-md flex flex-col items-center gap-2.5"
+          >
+            <GameButton
+              variant="success"
+              size="lg"
+              fullWidth
+              onClick={onClose}
+            >
+              <span className="text-sm sm:text-base font-black tracking-wide">
+                CONTINUE PLAYING
+              </span>
+            </GameButton>
+            <span className="px-3 py-1 rounded-full bg-[#FFFDF0]/85 border border-[#B86B00]/45 text-[11px] font-extrabold text-[#6B3E02]">
+              Practice Mode • Demo only, nothing sent on-chain
+            </span>
+          </motion.div>
+        ) : settledAction ? (
           <motion.div
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
@@ -247,19 +271,21 @@ export const PostWinModal: React.FC<PostWinModalProps> = ({
           </motion.div>
         )}
 
-        {/* Explorer Verify Link */}
-        <motion.a
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.45 }}
-          href={`https://explorer.solana.com/address/${prize.mint}?cluster=devnet`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="mt-4 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#FFFDF0]/75 hover:bg-[#FFFDF0] border border-[#B86B00]/50 text-[11px] font-extrabold text-[#5C2B00] transition-colors"
-        >
-          <span>Inspect Mint on Solana Explorer</span>
-          <ExternalLink className="w-3 h-3" />
-        </motion.a>
+        {/* Explorer Verify Link (Live Mode Only) */}
+        {!isPracticeMode && (
+          <motion.a
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.45 }}
+            href={`https://explorer.solana.com/address/${prize.mint}?cluster=devnet`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-4 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#FFFDF0]/75 hover:bg-[#FFFDF0] border border-[#B86B00]/50 text-[11px] font-extrabold text-[#5C2B00] transition-colors"
+          >
+            <span>Inspect Mint on Solana Explorer</span>
+            <ExternalLink className="w-3 h-3" />
+          </motion.a>
+        )}
       </div>
     </SunburstBackground>
   );

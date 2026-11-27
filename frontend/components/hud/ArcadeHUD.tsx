@@ -1,23 +1,21 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
-import { Shield, Camera, HelpCircle } from "lucide-react";
+import { Shield, HelpCircle, Gamepad2, MoreVertical } from "lucide-react";
 import { VirtualJoystick } from "./VirtualJoystick";
 import { TicketBadge } from "../TicketBadge";
 import { GameButton } from "../Button";
 import { ArcadeToast, ArcadeToastData } from "../ArcadeToast";
 import { formatTickets } from "../modals/TicketsModal";
-import type { CamMode } from "../three/ClawMachineView";
-
-const CAM_ORDER: CamMode[] = ["hero", "front", "side", "orbit"];
+import { MobileMenuModal } from "../modals/MobileMenuModal";
 
 export interface ArcadeHUDProps {
   mounted: boolean;
   isBootHudHidden: boolean;
   canPlayTurn: boolean;
+  isPracticeMode?: boolean;
   ticketBalance: number;
-  activeCamMode: CamMode;
   inStockCount: number;
   toastMessage: ArcadeToastData | null;
   gameStateText: string;
@@ -26,7 +24,7 @@ export interface ArcadeHUDProps {
   vrfStatus: "Ready" | "Rolling" | "Fulfilled" | "Missed";
   lastSignature?: string;
   onOpenTicketsModal: () => void;
-  onCamModeChange: (mode: CamMode) => void;
+  onTogglePracticeMode: () => void;
   onOpenOddsModal: () => void;
   onOpenHowToPlayModal: () => void;
   onOpenSettingsModal: () => void;
@@ -39,8 +37,8 @@ export const ArcadeHUD: React.FC<ArcadeHUDProps> = ({
   mounted,
   isBootHudHidden,
   canPlayTurn,
+  isPracticeMode = false,
   ticketBalance,
-  activeCamMode,
   inStockCount,
   toastMessage,
   gameStateText,
@@ -49,7 +47,7 @@ export const ArcadeHUD: React.FC<ArcadeHUDProps> = ({
   vrfStatus,
   lastSignature,
   onOpenTicketsModal,
-  onCamModeChange,
+  onTogglePracticeMode,
   onOpenOddsModal,
   onOpenHowToPlayModal,
   onOpenSettingsModal,
@@ -57,11 +55,7 @@ export const ArcadeHUD: React.FC<ArcadeHUDProps> = ({
   onJoystickMove,
   onTriggerDrop,
 }) => {
-  const handleCyclePerspective = () => {
-    const idx = CAM_ORDER.indexOf(activeCamMode);
-    const next = CAM_ORDER[(idx + 1) % CAM_ORDER.length];
-    onCamModeChange(next);
-  };
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   return (
     <>
@@ -73,61 +67,75 @@ export const ArcadeHUD: React.FC<ArcadeHUDProps> = ({
       >
         {/* Top-Left: 3D Arcade Ticket Badge */}
         <div
-          title="Manage Tickets, Deposit, Cashout & Faucet"
+          title={
+            isPracticeMode
+              ? "Practice Mode Active — Click + to buy tickets"
+              : "Manage Tickets, Deposit, Cashout & Faucet"
+          }
           className="pointer-events-auto"
         >
           <TicketBadge
-            value={formatTickets(ticketBalance)}
+            value={isPracticeMode ? "DEMO" : formatTickets(ticketBalance)}
             onPlusClick={onOpenTicketsModal}
             className="scale-[0.84] sm:scale-100 origin-left"
           />
         </div>
 
         {/* Top-Right Controls Cluster */}
-        <div className="flex flex-wrap items-center justify-end gap-1.5 sm:gap-2 pointer-events-auto">
-          <GameButton
-            variant="primary"
-            size="sm"
-            onClick={handleCyclePerspective}
-            title="Toggle Camera Perspective (Keys 1–4)"
-            leftIcon={<Camera className="w-3.5 h-3.5 text-[#1E7DF2]" />}
-          >
-            <span className="hidden md:inline mr-1">Camera</span>
-            <span className="uppercase text-xs font-black text-[#1E7DF2]">
-              {activeCamMode}
-            </span>
-          </GameButton>
+        <div className="flex items-center justify-end gap-1.5 sm:gap-2 pointer-events-auto">
+          {/* Desktop Options (moved into 3-dots dialog on mobile/smaller screens) */}
+          <div className="hidden md:flex items-center gap-2">
+            <GameButton
+              variant={isPracticeMode ? "success" : "primary"}
+              size="sm"
+              onClick={onTogglePracticeMode}
+              title={
+                isPracticeMode
+                  ? "Exit Practice Demo and switch back to Live Mode"
+                  : "Play Demo Mode for free without tickets"
+              }
+              leftIcon={
+                <Gamepad2
+                  className={`w-3.5 h-3.5 ${
+                    isPracticeMode ? "text-white" : "text-[#167A2E]"
+                  }`}
+                />
+              }
+            >
+              <span className="font-black tracking-wide">
+                {isPracticeMode ? "DEMO ON" : "DEMO"}
+              </span>
+            </GameButton>
 
-          <GameButton
-            variant="accent"
-            size="sm"
-            onClick={onOpenOddsModal}
-            leftIcon={<Shield className="w-3.5 h-3.5" />}
-          >
-            <span className="hidden sm:inline">REWARDS</span>
-            <span className="sm:hidden">PRIZES ({inStockCount})</span>
-          </GameButton>
+            <GameButton
+              variant="accent"
+              size="sm"
+              onClick={onOpenOddsModal}
+              leftIcon={<Shield className="w-3.5 h-3.5" />}
+            >
+              <span>REWARDS</span>
+            </GameButton>
 
-          <div className="wallet-adapter-wrapper flex justify-end pb-[4px]">
-            {mounted ? (
-              <WalletMultiButton />
-            ) : (
-              <GameButton variant="info" size="sm" disabled>
-                CONNECT
-              </GameButton>
-            )}
+            <div className="wallet-adapter-wrapper flex justify-end pb-[4px]">
+              {mounted ? (
+                <WalletMultiButton />
+              ) : (
+                <GameButton variant="info" size="sm" disabled>
+                  CONNECT
+                </GameButton>
+              )}
+            </div>
+
+            <GameButton
+              variant="info"
+              size="sm"
+              onClick={onOpenHowToPlayModal}
+              title="How to Play Magiclaw"
+              leftIcon={<HelpCircle className="w-3.5 h-3.5" />}
+            >
+              <span>HOW TO PLAY</span>
+            </GameButton>
           </div>
-
-          <GameButton
-            variant="info"
-            size="sm"
-            onClick={onOpenHowToPlayModal}
-            title="How to Play Magiclaw"
-            leftIcon={<HelpCircle className="w-3.5 h-3.5" />}
-          >
-            <span className="hidden sm:inline">HOW TO PLAY</span>
-            <span className="sm:hidden">GUIDE</span>
-          </GameButton>
 
           <button
             type="button"
@@ -142,8 +150,35 @@ export const ArcadeHUD: React.FC<ArcadeHUDProps> = ({
               className="w-9 h-9 sm:w-10 sm:h-10 object-contain drop-shadow-[0_3px_4px_rgba(0,0,0,0.35)]"
             />
           </button>
+
+          {/* 3-Dots Menu Trigger (Mobile & smaller screens only) */}
+          <div className="md:hidden">
+            <GameButton
+              variant="primary"
+              size="sm"
+              onClick={() => setIsMobileMenuOpen(true)}
+              title="Open Menu"
+              aria-label="Open Menu"
+            >
+              <MoreVertical
+                className="w-4 h-4 text-[#3E200C] -mx-1"
+                strokeWidth={2.75}
+              />
+            </GameButton>
+          </div>
         </div>
       </header>
+
+      <MobileMenuModal
+        isOpen={isMobileMenuOpen}
+        onClose={() => setIsMobileMenuOpen(false)}
+        mounted={mounted}
+        isPracticeMode={isPracticeMode}
+        inStockCount={inStockCount}
+        onTogglePracticeMode={onTogglePracticeMode}
+        onOpenOddsModal={onOpenOddsModal}
+        onOpenHowToPlayModal={onOpenHowToPlayModal}
+      />
 
       {/* Right-aligned Slide Toast below Settings & HUD Header */}
       <ArcadeToast toast={toastMessage} onClose={onCloseToast} />
@@ -211,7 +246,7 @@ export const ArcadeHUD: React.FC<ArcadeHUDProps> = ({
                   DROP
                 </span>
                 <span className="text-[10px] font-extrabold tracking-widest opacity-95 mt-0.5">
-                  1 🎟️
+                  {isPracticeMode ? "FREE" : "1 🎟️"}
                 </span>
               </div>
             </GameButton>
