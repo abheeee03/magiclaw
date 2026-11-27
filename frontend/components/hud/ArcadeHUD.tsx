@@ -190,7 +190,7 @@ export const ArcadeHUD: React.FC<ArcadeHUDProps> = ({
         } relative z-20 px-4 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-10 sm:pb-5 md:px-16 lg:px-20 flex flex-col gap-2 sm:gap-2.5 pointer-events-none`}
       >
         <div className="w-full flex items-end justify-center gap-6 sm:justify-between">
-          <div className="rounded-3xl bg-[#E0E0E0]/95 border-[3px] border-[#3E200C] shadow-[0_6px_0_#3E200C,0_14px_28px_rgba(0,0,0,0.45)] p-2 sm:p-2.5 flex items-center gap-3.5 pointer-events-auto">
+          <div className="pointer-events-auto">
             <VirtualJoystick
               onMove={onJoystickMove}
               disabled={
@@ -201,37 +201,6 @@ export const ArcadeHUD: React.FC<ArcadeHUDProps> = ({
                 gameStateText === "RETURNING"
               }
             />
-
-            <div className="hidden sm:flex flex-col gap-1 pr-2 min-w-[165px]">
-              <div className="flex items-center gap-2">
-                <span
-                  className={`w-2.5 h-2.5 rounded-full border border-[#3E200C] ${
-                    canPlayTurn ? "bg-[#48dd26]" : "bg-[#ffd014]"
-                  }`}
-                />
-                <span className="text-[11px] font-black tracking-wider text-[#3E200C]">
-                  {gameStateText}
-                </span>
-              </div>
-              <div className="text-[10px] font-bold text-[#52361F] leading-relaxed">
-                <div>
-                  <strong className="text-[#1e232a] font-black">
-                    WASD / Arrows
-                  </strong>{" "}
-                  Move Claw
-                </div>
-                <div>
-                  <strong className="text-[#1e232a] font-black">
-                    Space / Enter
-                  </strong>{" "}
-                  Drop Claw
-                </div>
-                <div>
-                  <strong className="text-[#1e232a] font-black">1–4</strong>{" "}
-                  Perspective
-                </div>
-              </div>
-            </div>
           </div>
 
           <div className="rounded-3xl bg-[#E0E0E0]/95 border-[3px] border-[#3E200C] shadow-[0_6px_0_#3E200C,0_14px_28px_rgba(0,0,0,0.45)] p-2 sm:p-3 flex items-center justify-center pointer-events-auto">
