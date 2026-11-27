@@ -53,8 +53,8 @@ export const TicketsModal: React.FC<TicketsModalProps> = ({
   const subtitleText = isOnchainActive
     ? "Live Ephemeral Rollup Session"
     : connected
-    ? `1 Ticket = ${playFeeUsd.toFixed(2)} Test USDC`
-    : "Connect Wallet to Play";
+      ? `1 Ticket = ${playFeeUsd.toFixed(2)} Test USDC`
+      : "Connect Wallet to Play";
 
   return (
     <CartoonDialog
@@ -108,7 +108,7 @@ export const TicketsModal: React.FC<TicketsModalProps> = ({
           <div className="rounded-2xl bg-[#FDF8EE] border-2 border-[#3E200C]/25 p-3.5 flex flex-col gap-3 shadow-[0_3px_0_rgba(62,32,12,0.18)]">
             <div className="flex items-center justify-between text-xs">
               <span className="text-[#3E200C] font-extrabold uppercase tracking-wider">
-                1. Buy Tickets
+                Buy Tickets
               </span>
               <span className="text-[#6E4B2A] font-bold">
                 Cost:{" "}
@@ -157,7 +157,7 @@ export const TicketsModal: React.FC<TicketsModalProps> = ({
             disabled={faucetLoading || onboardingLoading}
             onClick={onAirdropUsdc}
           >
-            {faucetLoading ? "AIRDROPPING..." : "2. AIRDROP 10 TEST USDC"}
+            {faucetLoading ? "AIRDROPPING..." : "AIRDROP 10 TEST USDC"}
           </GameButton>
 
           {/* Option 3: Withdraw Tickets to Wallet */}
